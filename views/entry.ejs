@@ -1,0 +1,43 @@
+<%- include('partials/header') %>
+<h2>Vehicle Entry - <%= currentLot ? currentLot.name : 'Select a Parking Lot' %></h2>
+<% if (error) { %>
+  <div class="alert alert-danger"><%= error %></div>
+<% } %>
+<% if (validationErrors && validationErrors.length > 0) { %>
+  <div class="alert alert-danger">
+    <ul>
+      <% validationErrors.forEach(error => { %>
+        <li><%= error %></li>
+      <% }) %>
+    </ul>
+  </div>
+<% } %>
+<form action="/entry" method="POST" id="entryForm">
+  <div class="mb-3">
+    <label for="number_plate" class="form-label">Number Plate</label>
+    <input type="text" class="form-control" id="number_plate" name="number_plate" value="<%= autofill.number_plate || '' %>" required>
+    <small class="form-text text-muted">3-10 characters, uppercase letters and numbers only (e.g., ABC123)</small>
+  </div>
+  <div class="mb-3">
+    <label for="owner_name" class="form-label">Owner Name (Optional)</label>
+    <input type="text" class="form-control" id="owner_name" name="owner_name" value="<%= autofill.owner_name || '' %>">
+    <small class="form-text text-muted">1-50 characters, letters and spaces only</small>
+  </div>
+  <div class="mb-3">
+    <label for="phone" class="form-label">Phone (Optional)</label>
+    <input type="text" class="form-control" id="phone" name="phone" value="<%= autofill.phone || '' %>">
+    <small class="form-text text-muted">10-15 digits</small>
+  </div>
+  <div class="mb-3">
+    <label for="category_id" class="form-label">Vehicle Category</label>
+    <select class="form-select" id="category_id" name="category_id" required>
+      <% categories.forEach(category => { %>
+        <option value="<%= category.id %>" <%= autofill.category_id == category.id ? 'selected' : '' %>>
+          <%= category.name %>
+        </option>
+      <% }) %>
+    </select>
+  </div>
+  <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+<%- include('partials/footer') %>

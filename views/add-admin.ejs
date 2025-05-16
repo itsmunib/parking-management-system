@@ -1,0 +1,32 @@
+<%- include('partials/header') %>
+<h2>Add Admin for Parking Lot <%= lotId %></h2>
+<% if (error && error !== 'null') { %>
+  <div class="alert alert-danger"><%= error %></div>
+<% } %>
+<% if (validationErrors && validationErrors.length > 0) { %>
+  <div class="alert alert-danger">
+    <ul>
+      <% validationErrors.forEach(error => { %>
+        <li><%= error %></li>
+      <% }) %>
+    </ul>
+  </div>
+<% } %>
+<form action="/add-admin" method="POST">
+  <div class="mb-3">
+    <label for="username" class="form-label">Username</label>
+    <input type="text" class="form-control" id="username" name="username" required>
+    <small class="form-text text-muted">3-20 characters, letters and numbers only</small>
+  </div>
+  <div class="mb-3">
+    <label for="password" class="form-label">Password</label>
+    <input type="password" class="form-control" id="password" name="password" required>
+    <small class="form-text text-muted">At least 8 characters</small>
+  </div>
+  <div class="mb-3">
+    <label for="email" class="form-label">Email</label>
+    <input type="email" class="form-control" id="email" name="email" required>
+  </div>
+  <button type="submit" class="btn btn-primary">Add Admin</button>
+</form>
+<%- include('partials/footer') %>

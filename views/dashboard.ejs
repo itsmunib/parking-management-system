@@ -1,0 +1,157 @@
+<%- include('partials/header') %>
+<h2>Dashboard - <%= currentLot ? currentLot.name : 'Select a Parking Lot' %></h2>
+<% if (error && error !== 'null') { %>
+  <div class="alert alert-danger"><%= error %></div>
+<% } %>
+<div class="mb-3">
+  <a href="/lots" class="btn btn-secondary">Change Parking Lot</a>
+</div>
+<div class="mb-3">
+  <form action="/dashboard" method="GET">
+    <label for="filter" class="form-label">Filter Analytics:</label>
+    <select name="filter" id="filter" class="form-select d-inline w-auto" onchange="this.form.submit()">
+      <option value="today" <%= filter === 'today' ? 'selected' : '' %>>Today</option>
+      <option value="weekly" <%= filter === 'weekly' ? 'selected' : '' %>>Weekly</option>
+      <option value="monthly" <%= filter === 'monthly' ? 'selected' : '' %>>Monthly</option>
+    </select>
+  </form>
+</div>
+<div class="row">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Vehicles and Earnings Over Time</h5>
+        <canvas id="vehiclesEarningsChart"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Current Space Usage</h5>
+        <canvas id="spaceChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="row mt-4">
+  <div class="col-md-3">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Today's Vehicles</h5>
+        <p class="card-text"><%= vehicles %></p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Tenant Earnings</h5>
+        <p class="card-text">$<%= earnings.toFixed(2) %></p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Platform Fee (5%)</h5>
+        <p class="card-text">$<%= platformFee.toFixed(2) %></p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Available Spaces</h5>
+        <p class="card-text"><%= available %></p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">Parked Spaces</h5>
+        <p class="card-text"><%= parked %></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const ctx1 = document.getElementById('vehiclesEarningsChart').getContext('2d');
+  new Chart(ctx1, {
+    type: 'line',
+    data: {
+      labels: <%- JSON.stringify(chartLabels) %>,
+      datasets: [
+        {
+          label: 'Vehicles',
+          data: <%- JSON.stringify(vehicleData) %>,
+          borderColor: 'rgba(75, 192, 192, 1)',
+          backgroundColor: 'rgba(75, 192, 192, 0.2)',
+          fill: false
+        },
+        {
+          label: 'Earnings ($)',
+          data: <%- JSON.stringify(earningsData) %>,
+          borderColor: 'rgba(255, 99, 132, 1)',
+          backgroundColor: 'rgba(255, 99, 132, 0.2)',
+          fill: false
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Count / Earnings ($)'
+          }
+        },
+        x: {
+          title: {
+            display: true,
+            text: 'Date'
+          }
+        }
+      }
+    }
+  });
+
+  const ctx2 = document.getElementById('spaceChart').getContext('2d');
+  new Chart(ctx2, {
+    type: 'bar',
+    data: {
+      labels: ['Available Spaces', 'Parked Spaces'],
+      datasets: [{
+        label: 'Spaces',
+        data: [<%= available %>, <%= parked %>],
+        backgroundColor: [
+          'rgba(54, 162, 235, 0.2)',
+          'rgba(255, 206, 86, 0.2)'
+        ],
+        borderColor: [
+          'rgba(54, 162, 235, 1)',
+          'rgba(255, 206, 86, 1)'
+        ],
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Number of Spaces'
+          }
+        }
+      }
+    }
+  });
+</script>
+<%- include('partials/footer') %>

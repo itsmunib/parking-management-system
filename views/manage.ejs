@@ -1,0 +1,153 @@
+<%- include('partials/header') %>
+<h2>Manage System - <%= currentLot ? currentLot.name : 'Select a Parking Lot' %></h2>
+<% if (error) { %>
+  <div class="alert alert-danger"><%= error %></div>
+<% } %>
+<% if (validationErrors && validationErrors.length > 0) { %>
+  <div class="alert alert-danger">
+    <ul>
+      <% validationErrors.forEach(error => { %>
+        <li><%= error %></li>
+      <% }) %>
+    </ul>
+  </div>
+<% } %>
+<h4>Add Vehicle Category</h4>
+<form action="/manage/add-category" method="POST">
+  <div class="mb-3">
+    <label for="name" class="form-label">Category Name</label>
+    <input type="text" class="form-control" id="name" name="name" required>
+    <small class="form-text text-muted">1-50 characters, letters, numbers, and spaces only</small>
+  </div>
+  <div class="mb-3">
+    <label for="total_spaces" class="form-label">Total Spaces</label>
+    <input type="number" class="form-control" id="total_spaces" name="total_spaces" min="1" required>
+    <small class="form-text text-muted">Positive integer</small>
+  </div>
+  <div class="mb-3">
+    <label for="pricing_type" class="form-label">Pricing Type</label>
+    <select class="form-select" id="pricing_type" name="pricing_type" required>
+      <option value="hourly">Hourly</option>
+      <option value="per-entry">Per Entry</option>
+    </select>
+  </div>
+  <div class="mb-3">
+    <label for="price" class="form-label">Price ($)</label>
+    <input type="number" step="0.01" class="form-control" id="price" name="price" min="0" required>
+    <small class="form-text text-muted">Positive number</small>
+  </div>
+  <button type="submit" class="btn btn-primary">Add Category</button>
+</form>
+<h4 class="mt-4">Existing Categories</h4>
+<% if (categories.length > 0) { %>
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Total Spaces</th>
+        <th>Pricing Type</th>
+        <th>Price</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% categories.forEach(category => { %>
+        <tr>
+          <td><%= category.name %></td>
+          <td><%= category.total_spaces %></td>
+          <td><%= category.pricing_type %></td>
+          <td>$<%= (Number(category.price) || 0).toFixed(2) %></td>
+          <td>
+            <a href="/manage/edit/<%= category.id %>" class="btn btn-sm btn-warning">Edit</a>
+            <button class="btn btn-sm btn-danger" onclick="openDeleteModal('<%= category.id %>', '<%= category.name %>')">Delete</button>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+<% } else { %>
+  <p>No categories added yet.</p>
+<% } %>
+
+<!-- Edit Modal -->
+<% if (typeof editCategory !== 'undefined' && editCategory !== null) { %>
+  <div class="modal fade show" id="editModal" tabindex="-1" style="display: block;" aria-modal="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Category</h5>
+          <a href="/manage" class="btn-close" aria-label="Close"></a>
+        </div>
+        <form action="/manage/edit/<%= editCategory.id %>" method="POST">
+          <div class="modal-body">
+            <% if (validationErrors && validationErrors.length > 0) { %>
+              <div class="alert alert-danger">
+                <ul>
+                  <% validationErrors.forEach(error => { %>
+                    <li><%= error %></li>
+                  <% }) %>
+                </ul>
+              </div>
+            <% } %>
+            <div class="mb-3">
+              <label for="edit_name" class="form-label">Category Name</label>
+              <input type="text" class="form-control" id="edit_name" name="name" value="<%= editCategory.name %>" required>
+              <small class="form-text text-muted">1-50 characters, letters, numbers, and spaces only</small>
+            </div>
+            <div class="mb-3">
+              <label for="edit_total_spaces" class="form-label">Total Spaces</label>
+              <input type="number" class="form-control" id="edit_total_spaces" name="total_spaces" value="<%= editCategory.total_spaces %>" min="1" required>
+              <small class="form-text text-muted">Positive integer</small>
+            </div>
+            <div class="mb-3">
+              <label for="edit_pricing_type" class="form-label">Pricing Type</label>
+              <select class="form-select" id="edit_pricing_type" name="pricing_type" required>
+                <option value="hourly" <%= editCategory.pricing_type === 'hourly' ? 'selected' : '' %>>Hourly</option>
+                <option value="per-entry" <%= editCategory.pricing_type === 'per-entry' ? 'selected' : '' %>>Per Entry</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="edit_price" class="form-label">Price ($)</label>
+              <input type="number" step="0.01" class="form-control" id="edit_price" name="price" value="<%= (Number(editCategory.price) || 0).toFixed(2) %>" min="0" required>
+              <small class="form-text text-muted">Positive number</small>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <a href="/manage" class="btn btn-secondary">Close</a>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+<% } %>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteModalLabel">Confirm Deletion</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        Are you sure you want to delete the category "<span id="deleteCategoryName"></span>"? This action cannot be undone.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form id="deleteForm" method="POST" style="display: inline;">
+          <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function openDeleteModal(id, name) {
+    document.getElementById('deleteCategoryName').textContent = name;
+    document.getElementById('deleteForm').action = `/manage/delete/${id}`;
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+  }
+</script>
+<%- include('partials/footer') %>

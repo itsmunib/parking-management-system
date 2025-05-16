@@ -1,0 +1,3 @@
+Exit error: Error: Column 'lot_id' in where clause is ambiguous
+Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-16T21:24:56.000Z', `owner_...' at line 1
+Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1C3C4', `entry_time` = '2025-05-16T22:39:58.000Z', `ow...' at line 1

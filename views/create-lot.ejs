@@ -1,0 +1,38 @@
+<%- include('partials/header') %>
+<h2>Create Parking Lot</h2>
+<% if (error && error !== 'null') { %>
+  <div class="alert alert-danger"><%= error %></div>
+<% } %>
+<% if (validationErrors && validationErrors.length > 0) { %>
+  <div class="alert alert-danger">
+    <ul>
+      <% validationErrors.forEach(error => { %>
+        <li><%= error %></li>
+      <% }) %>
+    </ul>
+  </div>
+<% } %>
+<form action="/lots/create" method="POST">
+  <div class="mb-3">
+    <label for="name" class="form-label">Parking Lot Name</label>
+    <input type="text" class="form-control" id="name" name="name" required>
+    <small class="form-text text-muted">1-100 characters, letters, numbers, and spaces only</small>
+  </div>
+  <h4>Lot Owner Credentials</h4>
+  <div class="mb-3">
+    <label for="owner_username" class="form-label">Owner Username</label>
+    <input type="text" class="form-control" id="owner_username" name="owner_username" required>
+    <small class="form-text text-muted">3-20 characters, letters and numbers only</small>
+  </div>
+  <div class="mb-3">
+    <label for="owner_password" class="form-label">Owner Password</label>
+    <input type="password" class="form-control" id="owner_password" name="owner_password" required>
+    <small class="form-text text-muted">At least 8 characters</small>
+  </div>
+  <div class="mb-3">
+    <label for="owner_email" class="form-label">Owner Email</label>
+    <input type="email" class="form-control" id="owner_email" name="owner_email" required>
+  </div>
+  <button type="submit" class="btn btn-primary">Create Parking Lot</button>
+</form>
+<%- include('partials/footer') %>

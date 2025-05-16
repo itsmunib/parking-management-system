@@ -1,0 +1,110 @@
+<%- include('partials/header') %>
+<h2>Vehicle Exit - <%= (typeof currentLot !== 'undefined' && currentLot && currentLot.name) ? currentLot.name : 'Select a Parking Lot' %></h2>
+<% if (typeof error !== 'undefined' && error && error !== 'null') { %>
+  <div class="alert alert-danger"><%= error %></div>
+<% } %>
+<% if (Array.isArray(entries) && entries.length > 0) { %>
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Number Plate</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% entries.forEach(function(entry, index) { %>
+        <tr>
+          <td><%= entry && entry.number_plate ? entry.number_plate : 'N/A' %></td>
+          <td>
+            <button class="btn btn-primary" onclick='showExitModal(<%- JSON.stringify(entry).replace(/'/g, "\\'") %>)'>Exit</button>
+          </td>
+        </tr>
+      <% }); %>
+    </tbody>
+  </table>
+<% } else { %>
+  <p>No vehicles currently parked.</p>
+<% } %>
+
+<div class="modal fade" id="exitModal" tabindex="-1" aria-labelledby="exitModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="exitModalLabel">Exit Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>Number Plate:</strong> <span id="modal_number_plate"></span></p>
+        <p><strong>Owner Name:</strong> <span id="modal_owner_name"></span></p>
+        <p><strong>Phone:</strong> <span id="modal_phone"></span></p>
+        <p><strong>Category:</strong> <span id="modal_category"></span></p>
+        <p><strong>Entry Time:</strong> <span id="modal_entry_time"></span></p>
+        <p><strong>Cost:</strong> $<span id="modal_cost"></span></p>
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" id="paid" onchange="toggleExitButton()">
+          <label class="form-check-label" for="paid">Paid</label>
+        </div>
+        <input type="hidden" id="entryId">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="exitButton" disabled onclick="submitExit()">Exit</button>
+      </div>
+    </div>
+  </div>
+</div>
+<%- include('partials/footer') %>
+<script>
+  let currentEntryId;
+  let currentCost;
+
+  function showExitModal(entry) {
+    console.log('Received entry:', entry); // Debug logging
+
+    currentEntryId = entry.id || '';
+    currentCost = 0;
+
+    document.getElementById('modal_number_plate').textContent = entry.number_plate || 'N/A';
+    document.getElementById('modal_owner_name').textContent = entry.owner_name || 'N/A';
+    document.getElementById('modal_phone').textContent = entry.phone || 'N/A';
+    document.getElementById('modal_category').textContent = entry.category || 'N/A';
+    document.getElementById('modal_entry_time').textContent = entry.entry_time ? new Date(entry.entry_time).toLocaleString() : 'N/A';
+
+    const entryDate = entry.entry_time ? new Date(entry.entry_time) : new Date();
+    const exitDate = new Date();
+    const price = parseFloat(entry.price) || 0;
+    if (entry.pricing_type === 'hourly') {
+      const hours = Math.ceil((exitDate - entryDate) / (1000 * 60 * 60));
+      currentCost = hours * price;
+    } else {
+      currentCost = price;
+    }
+    document.getElementById('modal_cost').textContent = currentCost.toFixed(2);
+
+    document.getElementById('entryId').value = currentEntryId;
+
+    new bootstrap.Modal(document.getElementById('exitModal')).show();
+  }
+
+  function toggleExitButton() {
+    const paidCheckbox = document.getElementById('paid');
+    const exitButton = document.getElementById('exitButton');
+    exitButton.disabled = !paidCheckbox.checked;
+  }
+
+  function submitExit() {
+    const entryIdInput = document.getElementById('entryId');
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/exit';
+
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'entry_id';
+    input.value = entryIdInput.value;
+    form.appendChild(input);
+
+    document.body.appendChild(form);
+    form.submit();
+  }
+</script>
