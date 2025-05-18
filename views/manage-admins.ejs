@@ -1,0 +1,30 @@
+<%- include('partials/header') %>
+<h2>Manage Admins</h2>
+<% if (error && error !== 'null') { %>
+  <div class="alert alert-danger"><%= error %></div>
+<% } %>
+<% if (Array.isArray(admins) && admins.length > 0) { %>
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Email</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% admins.forEach(admin => { %>
+        <tr>
+          <td><%= admin.username %></td>
+          <td><%= admin.email %></td>
+          <td>
+            <a href="/manage-admins/edit/<%= admin.id %>" class="btn btn-primary">Edit</a>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+<% } else { %>
+  <p>No admins found.</p>
+<% } %>
+<%- include('partials/footer') %>

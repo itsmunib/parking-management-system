@@ -5,7 +5,6 @@ const db = require('./db');
 const path = require('path');
 const fs = require('fs');
 const webPush = require('web-push');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || 'your-stripe-secret-key');
 require('dotenv').config();
 
 const app = express();
@@ -41,31 +40,33 @@ app.use(
 // Authentication middleware
 const isAuthenticated = (req, res, next) => {
   if (req.session.admin) {
+    // Parse permissions if it's a string
+    if (typeof req.session.admin.permissions === 'string') {
+      try {
+        req.session.admin.permissions = JSON.parse(req.session.admin.permissions);
+      } catch (err) {
+        console.error('Error parsing permissions:', err);
+        req.session.admin.permissions = {};
+      }
+    }
+    console.log('Authenticated user:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
     next();
   } else {
     res.redirect('/login');
   }
 };
 
-// Middleware to set lot_id for tenant-specific routes
-const setLotId = async (req, res, next) => {
-  if (!req.session.admin) {
-    return res.redirect('/login');
-  }
-
+// Permission middleware
+const hasPermission = (permission) => (req, res, next) => {
   const user = req.session.admin;
-  if (user.role === 'super_admin') {
-    // Super admins can select a lot
-    if (!req.session.currentLotId && req.path !== '/lots' && req.path !== '/lots/create') {
-      return res.redirect('/lots');
-    }
-  } else if (user.role === 'lot_owner' || user.role === 'admin') {
-    // Lot owners and admins are tied to a specific lot
-    req.session.currentLotId = user.lot_id;
+  const permissions = user.permissions || {};
+  console.log('Checking permission:', { user: user.username, permission, permissions });
+  if (permissions[permission] === true) {
+    next();
+  } else {
+    console.log('Permission denied, redirecting to /dashboard');
+    res.redirect('/dashboard');
   }
-
-  req.lotId = req.session.currentLotId || null;
-  next();
 };
 
 // Validation Functions
@@ -151,16 +152,8 @@ const validatePhone = (phone) => {
   return null;
 };
 
-const validateLotName = (name) => {
-  const nameRegex = /^[a-zA-Z0-9\s]{1,100}$/;
-  if (!nameRegex.test(name)) {
-    return 'Parking lot name must be 1-100 characters and contain only letters, numbers, and spaces';
-  }
-  return null;
-};
-
 // Redirect root URL to /dashboard
-app.get('/', isAuthenticated, setLotId, (req, res) => {
+app.get('/', isAuthenticated, (req, res) => {
   console.log('GET / - Redirecting to /dashboard');
   res.redirect('/dashboard');
 });
@@ -176,12 +169,17 @@ app.post('/login', async (req, res) => {
   console.log('POST /login:', { username });
   try {
     const [rows] = await db.pool.query('SELECT * FROM admins WHERE username = ?', [username]);
+    console.log('Database user:', rows);
     if (rows.length > 0) {
       const match = await bcrypt.compare(password, rows[0].password);
       if (match) {
+        if (typeof rows[0].permissions === 'string') {
+          rows[0].permissions = JSON.parse(rows[0].permissions);
+        }
+        console.log('Parsed permissions:', rows[0].permissions);
         req.session.admin = rows[0];
-        console.log('Login successful:', username);
-        res.redirect('/lots');
+        console.log('Session admin set:', req.session.admin);
+        res.redirect('/');
       } else {
         console.log('Invalid credentials for:', username);
         res.render('login', { error: 'Invalid credentials' });
@@ -197,170 +195,64 @@ app.post('/login', async (req, res) => {
   }
 });
 
-app.get('/lots', isAuthenticated, async (req, res) => {
-  console.log('GET /lots');
-  try {
-    const user = req.session.admin;
-    let lots;
-    if (user.role === 'super_admin') {
-      [lots] = await db.pool.query('SELECT * FROM parking_lots');
-    } else {
-      [lots] = await db.pool.query('SELECT * FROM parking_lots WHERE owner_id = ? OR id = ?', [user.id, user.lot_id]);
-    }
-    res.render('lots', { lots, user, error: null });
-  } catch (err) {
-    console.error('Lots fetch error:', err);
-    fs.writeFileSync('server.log', `Lots fetch error: ${err}\n`, { flag: 'a' });
-    res.render('lots', { lots: [], user: req.session.admin, error: 'Server error' });
-  }
-});
-
-app.get('/lots/create', isAuthenticated, (req, res) => {
-  console.log('GET /lots/create');
-  const user = req.session.admin;
-  if (user.role !== 'super_admin') {
-    return res.redirect('/lots');
-  }
-  res.render('create-lot', { user, error: null, validationErrors: [] });
-});
-
-app.post('/lots/create', isAuthenticated, async (req, res) => {
-  const user = req.session.admin;
-  if (user.role !== 'super_admin') {
-    return res.redirect('/lots');
-  }
-
-  const { name, owner_username, owner_password, owner_email } = req.body;
-  console.log('POST /lots/create:', { name, owner_username, owner_email });
-
-  const validationErrors = [];
-  const nameError = validateLotName(name);
-  const usernameError = validateUsername(owner_username);
-  const passwordError = validatePassword(owner_password);
-  const emailError = validateEmail(owner_email);
-
-  if (nameError) validationErrors.push(nameError);
-  if (usernameError) validationErrors.push(usernameError);
-  if (passwordError) validationErrors.push(passwordError);
-  if (emailError) validationErrors.push(emailError);
-
-  if (validationErrors.length > 0) {
-    return res.render('create-lot', { user, error: null, validationErrors });
-  }
-
-  try {
-    const [existingAdmin] = await db.pool.query('SELECT * FROM admins WHERE username = ?', [owner_username]);
-    if (existingAdmin.length > 0) {
-      return res.render('create-lot', { user, error: 'Username already exists', validationErrors: [] });
-    }
-
-    const hashedPassword = await bcrypt.hash(owner_password, 10);
-    const [adminResult] = await db.pool.query(
-      'INSERT INTO admins (username, password, email, role) VALUES (?, ?, ?, ?)',
-      [owner_username, hashedPassword, owner_email, 'lot_owner']
-    );
-
-    const ownerId = adminResult.insertId;
-    await db.pool.query(
-      'INSERT INTO parking_lots (name, owner_id) VALUES (?, ?)',
-      [name, ownerId]
-    );
-
-    const [lotResult] = await db.pool.query('SELECT id FROM parking_lots WHERE owner_id = ?', [ownerId]);
-    const lotId = lotResult[0].id;
-
-    await db.pool.query('UPDATE admins SET lot_id = ? WHERE id = ?', [lotId, ownerId]);
-
-    res.redirect('/lots');
-  } catch (err) {
-    console.error('Create lot error:', err);
-    fs.writeFileSync('server.log', `Create lot error: ${err}\n`, { flag: 'a' });
-    res.render('create-lot', { user, error: 'Failed to create parking lot', validationErrors: [] });
-  }
-});
-
-app.post('/lots/select/:id', isAuthenticated, async (req, res) => {
-  const { id } = req.params;
-  const user = req.session.admin;
-  console.log('POST /lots/select/:id:', { id, user });
-
-  try {
-    const [lot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [id]);
-    if (lot.length === 0) {
-      return res.redirect('/lots');
-    }
-
-    if (user.role === 'super_admin' || user.lot_id === parseInt(id) || lot[0].owner_id === user.id) {
-      req.session.currentLotId = parseInt(id);
-    }
-
-    res.redirect('/dashboard');
-  } catch (err) {
-    console.error('Select lot error:', err);
-    fs.writeFileSync('server.log', `Select lot error: ${err}\n`, { flag: 'a' });
-    res.redirect('/lots');
-  }
-});
-
-app.get('/dashboard', isAuthenticated, setLotId, async (req, res) => {
+app.get('/dashboard', isAuthenticated, async (req, res) => {
   console.log('GET /dashboard');
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Surrogate-Control', 'no-store');
+
     const user = req.session.admin;
-    const lotId = req.lotId;
     const filter = req.query.filter || 'today';
     let days = 1;
     let dateCondition = '';
     if (filter === 'weekly') {
       days = 7;
-      dateCondition = 'AND DATE(e.entry_time) >= CURDATE() - INTERVAL 7 DAY';
+      dateCondition = 'AND DATE(x.exit_time) >= CURDATE() - INTERVAL 7 DAY';
     } else if (filter === 'monthly') {
       days = 30;
-      dateCondition = 'AND DATE(e.entry_time) >= CURDATE() - INTERVAL 30 DAY';
+      dateCondition = 'AND DATE(x.exit_time) >= CURDATE() - INTERVAL 30 DAY';
     } else {
-      dateCondition = 'AND DATE(e.entry_time) = CURDATE()';
+      dateCondition = 'AND DATE(x.exit_time) = CURDATE()';
     }
 
-    const [vehicleCounts] = await db.query(
+    const [vehicleCounts] = await db.pool.query(
       `SELECT DATE(e.entry_time) as date, COUNT(*) as count 
        FROM entries e 
-       WHERE e.lot_id = ? AND DATE(e.entry_time) >= CURDATE() - INTERVAL ? DAY 
+       WHERE DATE(e.entry_time) >= CURDATE() - INTERVAL ? DAY 
        GROUP BY DATE(e.entry_time) 
        ORDER BY DATE(e.entry_time)`,
-      [lotId, days]
+      [days]
     );
 
-    const [earningsPerDay] = await db.query(
-      `SELECT DATE(e.entry_time) as date, COALESCE(SUM(x.cost), 0) as total 
+    const [earningsPerDay] = await db.pool.query(
+      `SELECT DATE(x.exit_time) as date, COALESCE(SUM(x.cost), 0) as total 
        FROM exits x 
-       JOIN entries e ON x.entry_id = e.id 
-       WHERE x.lot_id = ? AND DATE(e.entry_time) >= CURDATE() - INTERVAL ? DAY 
-       GROUP BY DATE(e.entry_time) 
-       ORDER BY DATE(e.entry_time)`,
-      [lotId, days]
+       WHERE DATE(x.exit_time) >= CURDATE() - INTERVAL ? DAY 
+       GROUP BY DATE(x.exit_time) 
+       ORDER BY DATE(x.exit_time)`,
+      [days]
     );
 
-    const [vehicles] = await db.query(
-      `SELECT COUNT(*) as count FROM entries WHERE lot_id = ? AND DATE(entry_time) = CURDATE()`,
-      [lotId]
+    const [vehicles] = await db.pool.query(
+      `SELECT COUNT(*) as count FROM entries WHERE DATE(entry_time) = CURDATE()`
     );
-    const [earnings] = await db.query(
+    const [earnings] = await db.pool.query(
       `SELECT COALESCE(SUM(x.cost), 0) as total 
        FROM exits x 
-       JOIN entries e ON x.entry_id = e.id 
-       WHERE x.lot_id = ? ${dateCondition}`,
-      [lotId]
+       WHERE 1=1 ${dateCondition}`
     );
-    const [parked] = await db.query(
-      `SELECT COUNT(*) as count FROM entries WHERE lot_id = ? AND id NOT IN (SELECT entry_id FROM exits)`,
-      [lotId]
+    const [parked] = await db.pool.query(
+      `SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)`
     );
-    const [totalSpaces] = await db.query(
-      `SELECT SUM(total_spaces) as total FROM vehicle_categories WHERE lot_id = ?`,
-      [lotId]
+    const [totalSpaces] = await db.pool.query(
+      `SELECT SUM(total_spaces) as total FROM vehicle_categories`
     );
     const available = totalSpaces[0].total ? totalSpaces[0].total - parked[0].count : 0;
 
-    // Calculate platform fee (5%)
+    console.log('Dashboard queries:', { vehicles: vehicles[0], earnings: earnings[0], parked: parked[0], totalSpaces: totalSpaces[0] });
+
     const platformFee = (earnings[0].total || 0) * 0.05;
     const tenantEarnings = (earnings[0].total || 0) - platformFee;
 
@@ -381,22 +273,7 @@ app.get('/dashboard', isAuthenticated, setLotId, async (req, res) => {
       earningsData.push(earningEntry ? earningEntry.total : 0);
     }
 
-    console.log('Dashboard data:', {
-      vehicles: vehicles[0].count,
-      earnings: earnings[0].total,
-      available,
-      parked: parked[0].count,
-      filter,
-      chartLabels: labels,
-      vehicleData,
-      earningsData,
-      platformFee,
-      tenantEarnings
-    });
-
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
-
-    res.render('dashboard', {
+    const renderData = {
       vehicles: vehicles[0].count || 0,
       earnings: tenantEarnings,
       platformFee,
@@ -408,8 +285,11 @@ app.get('/dashboard', isAuthenticated, setLotId, async (req, res) => {
       vehicleData,
       earningsData,
       user,
-      currentLot: currentLot[0] || null
-    });
+      hardRefresh: req.query.hardrefresh || null
+    };
+    console.log('Rendering dashboard with:', renderData);
+
+    res.render('dashboard', renderData);
   } catch (err) {
     console.error('Dashboard error:', err);
     fs.writeFileSync('server.log', `Dashboard error: ${err}\n`, { flag: 'a' });
@@ -425,34 +305,31 @@ app.get('/dashboard', isAuthenticated, setLotId, async (req, res) => {
       vehicleData: [],
       earningsData: [],
       user: req.session.admin,
-      currentLot: null
+      hardRefresh: null
     });
   }
 });
 
-app.get('/manage', isAuthenticated, setLotId, async (req, res) => {
+app.get('/manage', isAuthenticated, hasPermission('manage'), async (req, res) => {
   console.log('GET /manage');
   try {
     const user = req.session.admin;
-    const lotId = req.lotId;
-    const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lotId);
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     const formattedCategories = categories.map(category => ({
       ...category,
       price: Number(category.price) || 0
     }));
     console.log('Manage categories:', formattedCategories);
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
-    res.render('manage', { categories: formattedCategories, error: null, editCategory: null, validationErrors: [], user, currentLot: currentLot[0] || null });
+    res.render('manage', { categories: formattedCategories, error: null, editCategory: null, validationErrors: [], user });
   } catch (err) {
     console.error('Manage error:', err);
     fs.writeFileSync('server.log', `Manage error: ${err}\n`, { flag: 'a' });
-    res.render('manage', { categories: [], error: 'Server error', editCategory: null, validationErrors: [], user: req.session.admin, currentLot: null });
+    res.render('manage', { categories: [], error: 'Server error', editCategory: null, validationErrors: [], user: req.session.admin });
   }
 });
 
-app.post('/manage/add-category', isAuthenticated, setLotId, async (req, res) => {
+app.post('/manage/add-category', isAuthenticated, hasPermission('manage'), async (req, res) => {
   const user = req.session.admin;
-  const lotId = req.lotId;
   const { name, total_spaces, pricing_type, price } = req.body;
   console.log('POST /manage/add-category:', { name, total_spaces, pricing_type, price });
   
@@ -468,69 +345,62 @@ app.post('/manage/add-category', isAuthenticated, setLotId, async (req, res) => 
   if (priceError) validationErrors.push(priceError);
 
   if (validationErrors.length > 0) {
-    const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lotId);
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     const formattedCategories = categories.map(category => ({
       ...category,
       price: Number(category.price) || 0
     }));
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
     return res.render('manage', { 
       categories: formattedCategories, 
       error: null, 
       editCategory: null, 
       validationErrors,
-      user,
-      currentLot: currentLot[0] || null
+      user
     });
   }
 
   try {
-    await db.query(
-      'INSERT INTO vehicle_categories (name, total_spaces, pricing_type, price, lot_id) VALUES (?, ?, ?, ?, ?)',
-      [name, total_spaces, pricing_type, price, lotId], lotId
+    await db.pool.query(
+      'INSERT INTO vehicle_categories (name, total_spaces, pricing_type, price) VALUES (?, ?, ?, ?)',
+      [name, total_spaces, pricing_type, price]
     );
     res.redirect('/manage');
   } catch (err) {
     console.error('Add category error:', err);
     fs.writeFileSync('server.log', `Add category error: ${err}\n`, { flag: 'a' });
-    const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lotId);
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     const formattedCategories = categories.map(category => ({
       ...category,
       price: Number(category.price) || 0
     }));
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
     res.render('manage', { 
       categories: formattedCategories, 
       error: 'Failed to add category', 
       editCategory: null, 
       validationErrors: [], 
-      user,
-      currentLot: currentLot[0] || null
+      user
     });
   }
 });
 
-app.get('/manage/edit/:id', isAuthenticated, setLotId, async (req, res) => {
+app.get('/manage/edit/:id', isAuthenticated, hasPermission('manage'), async (req, res) => {
   const user = req.session.admin;
-  const lotId = req.lotId;
   const { id } = req.params;
   console.log('GET /manage/edit/:id:', { id });
   try {
-    const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lotId);
-    const [category] = await db.query('SELECT * FROM vehicle_categories WHERE id = ?', [id], lotId);
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const [category] = await db.pool.query('SELECT * FROM vehicle_categories WHERE id = ?', [id]);
     if (category.length === 0) {
       const formattedCategories = categories.map(cat => ({
         ...cat,
         price: Number(cat.price) || 0
       }));
-      const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
       return res.render('manage', { 
         categories: formattedCategories, 
         error: 'Category not found', 
         editCategory: null, 
         validationErrors: [], 
-        user,
-        currentLot: currentLot[0] || null
+        user
       });
     }
     const formattedCategories = categories.map(cat => ({
@@ -538,14 +408,12 @@ app.get('/manage/edit/:id', isAuthenticated, setLotId, async (req, res) => {
       price: Number(cat.price) || 0
     }));
     const formattedCategory = { ...category[0], price: Number(category[0].price) || 0 };
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
     res.render('manage', { 
       categories: formattedCategories, 
       error: null, 
       editCategory: formattedCategory, 
       validationErrors: [], 
-      user,
-      currentLot: currentLot[0] || null
+      user
     });
   } catch (err) {
     console.error('Edit category fetch error:', err);
@@ -555,15 +423,13 @@ app.get('/manage/edit/:id', isAuthenticated, setLotId, async (req, res) => {
       error: 'Server error', 
       editCategory: null, 
       validationErrors: [], 
-      user,
-      currentLot: null
+      user
     });
   }
 });
 
-app.post('/manage/edit/:id', isAuthenticated, setLotId, async (req, res) => {
+app.post('/manage/edit/:id', isAuthenticated, hasPermission('manage'), async (req, res) => {
   const user = req.session.admin;
-  const lotId = req.lotId;
   const { id } = req.params;
   const { name, total_spaces, pricing_type, price } = req.body;
   console.log('POST /manage/edit/:id:', { id, name, total_spaces, pricing_type, price });
@@ -580,109 +446,97 @@ app.post('/manage/edit/:id', isAuthenticated, setLotId, async (req, res) => {
   if (priceError) validationErrors.push(priceError);
 
   if (validationErrors.length > 0) {
-    const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lotId);
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     const formattedCategories = categories.map(category => ({
       ...category,
       price: Number(category.price) || 0
     }));
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
     return res.render('manage', { 
       categories: formattedCategories, 
       error: null, 
       editCategory: { id, name, total_spaces, pricing_type, price: Number(price) || 0 }, 
       validationErrors,
-      user,
-      currentLot: currentLot[0] || null
+      user
     });
   }
 
   try {
-    await db.query(
+    await db.pool.query(
       'UPDATE vehicle_categories SET name = ?, total_spaces = ?, pricing_type = ?, price = ? WHERE id = ?',
-      [name, total_spaces, pricing_type, price, id], lotId
+      [name, total_spaces, pricing_type, price, id]
     );
     res.redirect('/manage');
   } catch (err) {
     console.error('Edit category update error:', err);
     fs.writeFileSync('server.log', `Edit category update error: ${err}\n`, { flag: 'a' });
-    const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lotId);
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     const formattedCategories = categories.map(category => ({
       ...category,
       price: Number(category.price) || 0
     }));
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
     res.render('manage', { 
       categories: formattedCategories, 
       error: 'Failed to update category', 
       editCategory: { id, name, total_spaces, pricing_type, price: Number(price) || 0 },
       validationErrors: [],
-      user,
-      currentLot: currentLot[0] || null
+      user
     });
   }
 });
 
-app.post('/manage/delete/:id', isAuthenticated, setLotId, async (req, res) => {
+app.post('/manage/delete/:id', isAuthenticated, hasPermission('manage'), async (req, res) => {
   const user = req.session.admin;
-  const lotId = req.lotId;
   const { id } = req.params;
   console.log('POST /manage/delete/:id:', { id });
   try {
-    const [entries] = await db.query('SELECT * FROM entries WHERE category_id = ?', [id], lotId);
+    const [entries] = await db.pool.query('SELECT * FROM entries WHERE category_id = ?', [id]);
     if (entries.length > 0) {
-      const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lotId);
+      const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
       const formattedCategories = categories.map(category => ({
         ...category,
         price: Number(category.price) || 0
       }));
-      const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
       return res.render('manage', { 
         categories: formattedCategories, 
         error: 'Cannot delete category: it is in use by existing entries', 
         editCategory: null, 
         validationErrors: [], 
-        user,
-        currentLot: currentLot[0] || null
+        user
       });
     }
 
-    await db.query('DELETE FROM vehicle_categories WHERE id = ?', [id], lotId);
+    await db.pool.query('DELETE FROM vehicle_categories WHERE id = ?', [id]);
     res.redirect('/manage');
   } catch (err) {
     console.error('Delete category error:', err);
     fs.writeFileSync('server.log', `Delete category error: ${err}\n`, { flag: 'a' });
-    const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lotId);
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     const formattedCategories = categories.map(category => ({
       ...category,
       price: Number(category.price) || 0
     }));
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
     res.render('manage', { 
       categories: formattedCategories, 
       error: 'Failed to delete category', 
       editCategory: null, 
       validationErrors: [], 
-      user,
-      currentLot: currentLot[0] || null
+      user
     });
   }
 });
 
-app.get('/entry', isAuthenticated, setLotId, async (req, res) => {
+app.get('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => {
   console.log('GET /entry');
   try {
     const user = req.session.admin;
-    const lotId = req.lotId;
-    const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lotId);
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     console.log('Entry categories:', categories);
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
     res.render('entry', { 
       categories, 
       error: null, 
       autofill: {}, 
       validationErrors: [], 
-      user,
-      currentLot: currentLot[0] || null
+      user
     });
   } catch (err) {
     console.error('Entry error:', err);
@@ -692,15 +546,13 @@ app.get('/entry', isAuthenticated, setLotId, async (req, res) => {
       error: 'Server error', 
       autofill: {}, 
       validationErrors: [], 
-      user: req.session.admin,
-      currentLot: null
+      user: req.session.admin
     });
   }
 });
 
-app.post('/entry', isAuthenticated, setLotId, async (req, res) => {
+app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => {
   const user = req.session.admin;
-  const lotId = req.lotId;
   const { number_plate, owner_name, phone, category_id } = req.body;
   console.log('POST /entry:', { number_plate, owner_name, phone, category_id });
 
@@ -710,7 +562,7 @@ app.post('/entry', isAuthenticated, setLotId, async (req, res) => {
   const phoneError = validatePhone(phone);
 
   let categoryError = null;
-  const [categoryCheck] = await db.query('SELECT id FROM vehicle_categories WHERE id = ?', [category_id], lotId);
+  const [categoryCheck] = await db.pool.query('SELECT id FROM vehicle_categories WHERE id = ?', [category_id]);
   if (categoryCheck.length === 0) {
     categoryError = 'Selected category does not exist';
   }
@@ -721,22 +573,20 @@ app.post('/entry', isAuthenticated, setLotId, async (req, res) => {
   if (categoryError) validationErrors.push(categoryError);
 
   if (validationErrors.length > 0) {
-    const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lotId);
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     return res.render('entry', { 
       categories, 
       error: null, 
       autofill: { number_plate, owner_name, phone, category_id }, 
       validationErrors,
-      user,
-      currentLot: currentLot[0] || null
+      user
     });
   }
 
   try {
-    const [existing] = await db.query(
+    const [existing] = await db.pool.query(
       'SELECT owner_name, phone FROM entries WHERE number_plate = ? ORDER BY entry_time DESC LIMIT 1',
-      [number_plate], lotId
+      [number_plate]
     );
     const autofill = {
       number_plate,
@@ -746,66 +596,63 @@ app.post('/entry', isAuthenticated, setLotId, async (req, res) => {
     };
     console.log('Autofill data:', autofill);
 
-    await db.query(
-      'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time, lot_id) VALUES (?, ?, ?, ?, NOW(), ?)',
-      [number_plate, owner_name || null, phone || null, category_id, lotId], lotId
+    await db.pool.query(
+      'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
+      [number_plate, owner_name || null, phone || null, category_id]
     );
 
     res.redirect('/dashboard');
   } catch (err) {
     console.error('Add entry error:', err);
     fs.writeFileSync('server.log', `Add entry error: ${err}\n`, { flag: 'a' });
-    const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lotId);
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     res.render('entry', { 
       categories, 
       error: 'Failed to add entry', 
       autofill: { number_plate, owner_name, phone, category_id }, 
       validationErrors: [],
-      user,
-      currentLot: currentLot[0] || null
+      user
     });
   }
 });
 
-app.get('/exit', isAuthenticated, setLotId, async (req, res) => {
+app.get('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
   console.log('GET /exit');
   try {
     const user = req.session.admin;
-    const lotId = req.lotId;
-    console.log('User and Lot ID:', { user, lotId });
-
-    const [entries] = await db.query(
+    const [entries] = await db.pool.query(
       'SELECT e.id, e.number_plate, e.entry_time, e.owner_name, e.phone, vc.name as category, vc.pricing_type, vc.price ' +
-      'FROM entries e JOIN vehicle_categories vc ON e.category_id = vc.id ' +
-      'WHERE e.lot_id = ? AND e.id NOT IN (SELECT entry_id FROM exits)',
-      [lotId]
+      'FROM entries e LEFT JOIN vehicle_categories vc ON e.category_id = vc.id ' +
+      'WHERE e.id NOT IN (SELECT entry_id FROM exits)'
     );
     console.log('Exit entries:', entries);
-
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
-    console.log('Current Lot:', currentLot);
-
-    res.render('exit', { entries: entries || [], error: null, user, currentLot: currentLot[0] || null });
+    res.render('exit', { entries: entries || [], error: null, user });
   } catch (err) {
     console.error('Exit error:', err);
     fs.writeFileSync('server.log', `Exit error: ${err}\n`, { flag: 'a' });
-    res.status(500).render('exit', { entries: [], error: 'Server error: ' + err.message, user: req.session.admin, currentLot: null });
+    res.render('exit', { entries: [], error: 'Server error', user: req.session.admin });
   }
 });
 
-app.post('/exit', isAuthenticated, setLotId, async (req, res) => {
+app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
   const user = req.session.admin;
-  const lotId = req.lotId;
   const { entry_id } = req.body;
   console.log('POST /exit:', { entry_id });
 
   try {
-    const [entry] = await db.query(
+    const [parkedBefore] = await db.pool.query(
+      `SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)`
+    );
+    const [earningsBefore] = await db.pool.query(
+      `SELECT COALESCE(SUM(x.cost), 0) as total FROM exits x WHERE DATE(x.exit_time) = CURDATE()`
+    );
+    console.log('Dashboard stats before exit:', { parked: parkedBefore[0].count, earnings: earningsBefore[0].total });
+
+    const [entry] = await db.pool.query(
       'SELECT e.entry_time, e.number_plate, vc.pricing_type, vc.price ' +
       'FROM entries e JOIN vehicle_categories vc ON e.category_id = vc.id ' +
-      'WHERE e.id = ? AND e.lot_id = ?',
-      [entry_id, lotId]
+      'WHERE e.id = ?',
+      [entry_id]
     );
     console.log('Exit entry:', entry);
     if (entry.length === 0) {
@@ -817,53 +664,78 @@ app.post('/exit', isAuthenticated, setLotId, async (req, res) => {
     let cost = 0;
     if (entry[0].pricing_type === 'hourly') {
       const hours = Math.ceil((exitTime - entryTime) / (1000 * 60 * 60));
-      cost = hours * (entry[0].price || 0);
+      cost = hours * (parseFloat(entry[0].price) || 0);
     } else {
-      cost = entry[0].price || 0;
+      cost = parseFloat(entry[0].price) || 0;
     }
+    console.log('Calculated cost:', cost);
 
-    await db.query(
-      'INSERT INTO exits (entry_id, exit_time, cost, lot_id) VALUES (?, NOW(), ?, ?)',
-      [entry_id, cost, lotId], lotId
+    const [result] = await db.pool.query(
+      'INSERT INTO exits (entry_id, exit_time, cost) VALUES (?, NOW(), ?)',
+      [entry_id, cost]
     );
+    console.log('Exit record inserted:', { entry_id, cost, insertId: result.insertId });
 
-    // Send notification
+    const [newExit] = await db.pool.query('SELECT * FROM exits WHERE entry_id = ?', [entry_id]);
+    console.log('New exit record:', newExit);
+
+    const [parkedAfter] = await db.pool.query(
+      `SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)`
+    );
+    const [earningsAfter] = await db.pool.query(
+      `SELECT COALESCE(SUM(x.cost), 0) as total FROM exits x WHERE DATE(x.exit_time) = CURDATE()`
+    );
+    console.log('Dashboard stats after exit:', { parked: parkedAfter[0].count, earnings: earningsAfter[0].total });
+
     if (req.session.subscription) {
       const payload = JSON.stringify({
         title: 'Vehicle Exited',
-        body: `Your vehicle ${entry[0].number_plate} has exited Lot ${lotId}. Total cost: $${cost.toFixed(2)}.`
+        body: `Your vehicle ${entry[0].number_plate} has exited. Total cost: $${cost.toFixed(2)}.`
       });
       await webPush.sendNotification(req.session.subscription, payload);
     }
 
-    res.redirect('/dashboard');
+    // Force hard refresh with meta tag and JavaScript
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Exit Processed</title>
+        <meta http-equiv="refresh" content="0;url=/dashboard?hardrefresh=${Date.now()}">
+        <meta http-equiv="cache-control" content="no-store, no-cache, must-revalidate">
+        <meta http-equiv="pragma" content="no-cache">
+        <meta http-equiv="expires" content="0">
+        <script>
+          // Clear local storage and session storage
+          localStorage.clear();
+          sessionStorage.clear();
+          // Force hard navigation
+          window.location.href = '/dashboard?hardrefresh=${Date.now()}';
+          window.location.reload(true);
+        </script>
+      </head>
+      <body>
+        <p>Exit processed. Redirecting to dashboard...</p>
+      </body>
+      </html>
+    `);
   } catch (err) {
     console.error('Process exit error:', err);
     fs.writeFileSync('server.log', `Process exit error: ${err}\n`, { flag: 'a' });
-    const [currentLot] = await db.pool.query('SELECT * FROM parking_lots WHERE id = ?', [lotId]);
-    res.render('exit', { entries: [], error: 'Failed to process exit: ' + err.message, user, currentLot: currentLot[0] || null });
+    res.render('exit', { entries: [], error: 'Failed to process exit: ' + err.message, user });
   }
 });
 
-app.get('/add-admin', isAuthenticated, setLotId, (req, res) => {
+app.get('/add-admin', isAuthenticated, hasPermission('add_admin'), (req, res) => {
   console.log('GET /add-admin');
   const user = req.session.admin;
-  const lotId = req.lotId;
-  if (user.role !== 'lot_owner') {
-    return res.redirect('/dashboard');
-  }
-  res.render('add-admin', { error: null, validationErrors: [], user, lotId });
+  res.render('add-admin', { error: null, validationErrors: [], user });
 });
 
-app.post('/add-admin', isAuthenticated, setLotId, async (req, res) => {
+app.post('/add-admin', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
   const user = req.session.admin;
-  const lotId = req.lotId;
-  if (user.role !== 'lot_owner') {
-    return res.redirect('/dashboard');
-  }
-
-  const { username, password, email } = req.body;
-  console.log('POST /add-admin:', { username, email });
+  const { username, password, email, can_entry, can_exit, can_manage } = req.body;
+  console.log('POST /add-admin:', { username, email, can_entry, can_exit, can_manage });
 
   const validationErrors = [];
   const usernameError = validateUsername(username);
@@ -875,25 +747,31 @@ app.post('/add-admin', isAuthenticated, setLotId, async (req, res) => {
   if (emailError) validationErrors.push(emailError);
 
   if (validationErrors.length > 0) {
-    return res.render('add-admin', { error: null, validationErrors, user, lotId });
+    return res.render('add-admin', { error: null, validationErrors, user });
   }
 
   try {
     if (!username || !password || !email) {
       console.log('Missing fields');
-      return res.render('add-admin', { error: 'All fields are required', validationErrors: [], user, lotId });
+      return res.render('add-admin', { error: 'All fields are required', validationErrors: [], user });
     }
 
     const [existing] = await db.pool.query('SELECT * FROM admins WHERE username = ?', [username]);
     if (existing.length > 0) {
       console.log('Username exists:', username);
-      return res.render('add-admin', { error: 'Username already exists', validationErrors: [], user, lotId });
+      return res.render('add-admin', { error: 'Username already exists', validationErrors: [], user });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const permissions = {
+      entry: can_entry === 'on',
+      exit: can_exit === 'on',
+      manage: can_manage === 'on',
+      add_admin: false
+    };
     await db.pool.query(
-      'INSERT INTO admins (username, password, email, role, lot_id) VALUES (?, ?, ?, ?, ?)',
-      [username, hashedPassword, email, 'admin', lotId]
+      'INSERT INTO admins (username, password, email, permissions) VALUES (?, ?, ?, ?)',
+      [username, hashedPassword, email, JSON.stringify(permissions)]
     );
     console.log('Admin added:', username);
 
@@ -901,29 +779,169 @@ app.post('/add-admin', isAuthenticated, setLotId, async (req, res) => {
   } catch (err) {
     console.error('Add admin error:', err);
     fs.writeFileSync('server.log', `Add admin error: ${err}\n`, { flag: 'a' });
-    res.render('add-admin', { error: 'Failed to add admin', validationErrors: [], user, lotId });
+    res.render('add-admin', { error: 'Failed to add admin', validationErrors: [], user });
   }
 });
 
-// Public route to view parking lots and availability
+// Manage Admins - List all admins (Super Admin only)
+app.get('/manage-admins', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
+  console.log('GET /manage-admins');
+  try {
+    const user = req.session.admin;
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
+    console.log('Admins list:', admins);
+    res.render('manage-admins', { admins, error: null, user });
+  } catch (err) {
+    console.error('Manage admins error:', err);
+    fs.writeFileSync('server.log', `Manage admins error: ${err}\n`, { flag: 'a' });
+    res.render('manage-admins', { admins: [], error: 'Server error: ' + err.message, user });
+  }
+});
+
+// Manage Admins - Edit an admin's permissions (Super Admin only)
+app.get('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
+  console.log('GET /manage-admins/edit/:id');
+  const user = req.session.admin;
+  const { id } = req.params;
+  try {
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE id = ? AND username != ?', [id, user.username]);
+    if (admins.length === 0) {
+      return res.render('manage-admins', { admins: [], error: 'Admin not found', user });
+    }
+    const adminToEdit = admins[0];
+    if (typeof adminToEdit.permissions === 'string') {
+      adminToEdit.permissions = JSON.parse(adminToEdit.permissions);
+    }
+    console.log('Editing admin:', adminToEdit);
+    res.render('edit-admin', { admin: adminToEdit, error: null, validationErrors: [], user });
+  } catch (err) {
+    console.error('Edit admin fetch error:', err);
+    fs.writeFileSync('server.log', `Edit admin fetch error: ${err}\n`, { flag: 'a' });
+    res.render('edit-admin', { admin: null, error: 'Server error: ' + err.message, validationErrors: [], user });
+  }
+});
+
+app.post('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
+  const user = req.session.admin;
+  const { id } = req.params;
+  const { can_entry, can_exit, can_manage } = req.body;
+  console.log('POST /manage-admins/edit/:id:', { id, can_entry, can_exit, can_manage });
+
+  try {
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE id = ? AND username != ?', [id, user.username]);
+    if (admins.length === 0) {
+      return res.render('edit-admin', { admin: null, error: 'Admin not found', validationErrors: [], user });
+    }
+
+    const permissions = {
+      entry: can_entry === 'on',
+      exit: can_exit === 'on',
+      manage: can_manage === 'on',
+      add_admin: false
+    };
+    await db.pool.query(
+      'UPDATE admins SET permissions = ? WHERE id = ?',
+      [JSON.stringify(permissions), id]
+    );
+    console.log('Admin permissions updated:', { id, permissions });
+
+    res.redirect('/manage-admins');
+  } catch (err) {
+    console.error('Edit admin update error:', err);
+    fs.writeFileSync('server.log', `Edit admin update error: ${err}\n`, { flag: 'a' });
+    const adminToEdit = { id, permissions: { entry: can_entry === 'on', exit: can_exit === 'on', manage: can_manage === 'on', add_admin: false } };
+    res.render('edit-admin', { admin: adminToEdit, error: 'Failed to update admin: ' + err.message, validationErrors: [], user });
+  }
+});
+
+// Reports - Generate system usage reports (Super Admin only)
+app.get('/reports', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
+  console.log('GET /reports');
+  try {
+    const user = req.session.admin;
+    const filter = req.query.filter || 'today';
+    let days = 1;
+    let dateCondition = '';
+    if (filter === 'weekly') {
+      days = 7;
+      dateCondition = 'AND DATE(x.exit_time) >= CURDATE() - INTERVAL 7 DAY';
+    } else if (filter === 'monthly') {
+      days = 30;
+      dateCondition = 'AND DATE(x.exit_time) >= CURDATE() - INTERVAL 30 DAY';
+    } else {
+      dateCondition = 'AND DATE(x.exit_time) = CURDATE()';
+    }
+
+    const [totalEarnings] = await db.pool.query(
+      `SELECT COALESCE(SUM(x.cost), 0) as total 
+       FROM exits x 
+       WHERE 1=1 ${dateCondition}`
+    );
+
+    const [totalEntries] = await db.pool.query(
+      `SELECT COUNT(*) as count 
+       FROM entries e 
+       WHERE DATE(e.entry_time) >= CURDATE() - INTERVAL ? DAY`,
+      [days]
+    );
+    const [totalExits] = await db.pool.query(
+      `SELECT COUNT(*) as count 
+       FROM exits x 
+       WHERE DATE(x.exit_time) >= CURDATE() - INTERVAL ? DAY`,
+      [days]
+    );
+
+    const [adminActivity] = await db.pool.query(
+      `SELECT a.username, 
+              SUM(CASE WHEN e.entry_time >= CURDATE() - INTERVAL ? DAY THEN 1 ELSE 0 END) as entries_count,
+              SUM(CASE WHEN x.exit_time >= CURDATE() - INTERVAL ? DAY THEN 1 ELSE 0 END) as exits_count
+       FROM admins a
+       LEFT JOIN entries e ON e.id IN (SELECT entry_id FROM exits WHERE DATE(exit_time) >= CURDATE() - INTERVAL ? DAY)
+       LEFT JOIN exits x ON x.entry_id = e.id AND DATE(x.exit_time) >= CURDATE() - INTERVAL ? DAY
+       GROUP BY a.id, a.username`,
+      [days, days, days, days]
+    );
+
+    console.log('Reports data:', { totalEarnings, totalEntries, totalExits, adminActivity });
+
+    res.render('reports', {
+      totalEarnings: totalEarnings[0].total || 0,
+      totalEntries: totalEntries[0].count || 0,
+      totalExits: totalExits[0].count || 0,
+      adminActivity,
+      filter,
+      error: null,
+      user
+    });
+  } catch (err) {
+    console.error('Reports error:', err);
+    fs.writeFileSync('server.log', `Reports error: ${err}\n`, { flag: 'a' });
+    res.render('reports', {
+      totalEarnings: 0,
+      totalEntries: 0,
+      totalExits: 0,
+      adminActivity: [],
+      filter: 'today',
+      error: 'Server error: ' + err.message,
+      user: req.session.admin
+    });
+  }
+});
+
+// Public route to view parking availability
 app.get('/public', async (req, res) => {
   console.log('GET /public');
   try {
-    const [lots] = await db.pool.query('SELECT * FROM parking_lots');
-    const lotDetails = await Promise.all(lots.map(async (lot) => {
-      const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lot.id);
-      const [parked] = await db.query(
-        'SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)',
-        [], lot.id
-      );
-      const [totalSpaces] = await db.query(
-        'SELECT SUM(total_spaces) as total FROM vehicle_categories',
-        [], lot.id
-      );
-      const available = totalSpaces[0].total ? totalSpaces[0].total - parked[0].count : 0;
-      return { ...lot, categories, available, totalSpaces: totalSpaces[0].total || 0 };
-    }));
-    res.render('public-parking', { lots: lotDetails, error: null, validationErrors: [], autofill: {} });
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const [parked] = await db.pool.query(
+      'SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)'
+    );
+    const [totalSpaces] = await db.pool.query(
+      'SELECT SUM(total_spaces) as total FROM vehicle_categories'
+    );
+    const available = totalSpaces[0].total ? totalSpaces[0].total - parked[0].count : 0;
+    const lotDetails = { categories, available, totalSpaces: totalSpaces[0].total || 0 };
+    res.render('public-parking', { lots: [lotDetails], error: null, validationErrors: [], autofill: {} });
   } catch (err) {
     console.error('Public page error:', err);
     fs.writeFileSync('server.log', `Public page error: ${err}\n`, { flag: 'a' });
@@ -933,8 +951,8 @@ app.get('/public', async (req, res) => {
 
 // Public route to park a vehicle and get a ticket
 app.post('/public/park', async (req, res) => {
-  const { lot_id, number_plate, owner_name, phone, category_id } = req.body;
-  console.log('POST /public/park:', { lot_id, number_plate, owner_name, phone, category_id });
+  const { number_plate, owner_name, phone, category_id } = req.body;
+  console.log('POST /public/park:', { number_plate, owner_name, phone, category_id });
 
   const validationErrors = [];
   const plateError = validateNumberPlate(number_plate);
@@ -942,7 +960,7 @@ app.post('/public/park', async (req, res) => {
   const phoneError = validatePhone(phone);
 
   let categoryError = null;
-  const [categoryCheck] = await db.query('SELECT id FROM vehicle_categories WHERE id = ?', [category_id], lot_id);
+  const [categoryCheck] = await db.pool.query('SELECT id FROM vehicle_categories WHERE id = ?', [category_id]);
   if (categoryCheck.length === 0) {
     categoryError = 'Selected category does not exist';
   }
@@ -953,40 +971,34 @@ app.post('/public/park', async (req, res) => {
   if (categoryError) validationErrors.push(categoryError);
 
   if (validationErrors.length > 0) {
-    const [lots] = await db.pool.query('SELECT * FROM parking_lots');
-    const lotDetails = await Promise.all(lots.map(async (lot) => {
-      const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lot.id);
-      const [parked] = await db.query(
-        'SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)',
-        [], lot.id
-      );
-      const [totalSpaces] = await db.query(
-        'SELECT SUM(total_spaces) as total FROM vehicle_categories',
-        [], lot.id
-      );
-      const available = totalSpaces[0].total ? totalSpaces[0].total - parked[0].count : 0;
-      return { ...lot, categories, available, totalSpaces: totalSpaces[0].total || 0 };
-    }));
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const [parked] = await db.pool.query(
+      'SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)'
+    );
+    const [totalSpaces] = await db.pool.query(
+      'SELECT SUM(total_spaces) as total FROM vehicle_categories'
+    );
+    const available = totalSpaces[0].total ? totalSpaces[0].total - parked[0].count : 0;
+    const lotDetails = { categories, available, totalSpaces: totalSpaces[0].total || 0 };
     return res.render('public-parking', { 
-      lots: lotDetails, 
+      lots: [lotDetails], 
       error: null, 
       validationErrors,
-      autofill: { number_plate, owner_name, phone, category_id, lot_id }
+      autofill: { number_plate, owner_name, phone, category_id }
     });
   }
 
   try {
-    const [entryResult] = await db.query(
-      'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time, lot_id) VALUES (?, ?, ?, ?, NOW(), ?)',
-      [number_plate, owner_name || null, phone || null, category_id, lot_id], lot_id
+    const [entryResult] = await db.pool.query(
+      'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
+      [number_plate, owner_name || null, phone || null, category_id]
     );
     const entryId = entryResult.insertId;
 
-    // Send notification
     if (req.session.subscription) {
       const payload = JSON.stringify({
         title: 'Vehicle Parked',
-        body: `Your vehicle ${number_plate} has been parked in Lot ${lot_id}.`
+        body: `Your vehicle ${number_plate} has been parked.`
       });
       await webPush.sendNotification(req.session.subscription, payload);
     }
@@ -995,7 +1007,6 @@ app.post('/public/park', async (req, res) => {
       <div style="text-align: center; font-family: Arial, sans-serif; padding: 20px;">
         <h2>Parking System</h2>
         <h4>Entry Ticket</h4>
-        <p><strong>Parking Lot:</strong> ${lot_id}</p>
         <p><strong>Vehicle Number:</strong> ${number_plate}</p>
         <p><strong>Entry Time:</strong> ${new Date().toLocaleString()}</p>
       </div>
@@ -1022,25 +1033,20 @@ app.post('/public/park', async (req, res) => {
   } catch (err) {
     console.error('Public park error:', err);
     fs.writeFileSync('server.log', `Public park error: ${err}\n`, { flag: 'a' });
-    const [lots] = await db.pool.query('SELECT * FROM parking_lots');
-    const lotDetails = await Promise.all(lots.map(async (lot) => {
-      const [categories] = await db.query('SELECT * FROM vehicle_categories', [], lot.id);
-      const [parked] = await db.query(
-        'SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)',
-        [], lot.id
-      );
-      const [totalSpaces] = await db.query(
-        'SELECT SUM(total_spaces) as total FROM vehicle_categories',
-        [], lot.id
-      );
-      const available = totalSpaces[0].total ? totalSpaces[0].total - parked[0].count : 0;
-      return { ...lot, categories, available, totalSpaces: totalSpaces[0].total || 0 };
-    }));
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const [parked] = await db.pool.query(
+      'SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)'
+    );
+    const [totalSpaces] = await db.pool.query(
+      'SELECT SUM(total_spaces) as total FROM vehicle_categories'
+    );
+    const available = totalSpaces[0].total ? totalSpaces[0].total - parked[0].count : 0;
+    const lotDetails = { categories, available, totalSpaces: totalSpaces[0].total || 0 };
     res.render('public-parking', { 
-      lots: lotDetails, 
+      lots: [lotDetails], 
       error: 'Failed to park vehicle', 
       validationErrors: [],
-      autofill: { number_plate, owner_name, phone, category_id, lot_id }
+      autofill: { number_plate, owner_name, phone, category_id }
     });
   }
 });
@@ -1053,24 +1059,8 @@ app.get('/vapidPublicKey', (req, res) => {
 // Route to subscribe to notifications
 app.post('/subscribe', (req, res) => {
   const subscription = req.body;
-  req.session.subscription = subscription; // Store subscription in session
+  req.session.subscription = subscription;
   res.status(201).json({});
-});
-
-// Route to create a Stripe payment intent
-app.post('/create-payment-intent', async (req, res) => {
-  const { amount } = req.body;
-  try {
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amount * 100, // Amount in cents
-      currency: 'usd',
-      payment_method_types: ['card']
-    });
-    res.json({ clientSecret: paymentIntent.client_secret });
-  } catch (err) {
-    console.error('Payment intent error:', err);
-    res.status(500).json({ error: err.message });
-  }
 });
 
 app.get('/logout', (req, res) => {

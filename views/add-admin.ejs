@@ -1,5 +1,5 @@
 <%- include('partials/header') %>
-<h2>Add Admin for Parking Lot <%= lotId %></h2>
+<h2>Add Admin</h2>
 <% if (error && error !== 'null') { %>
   <div class="alert alert-danger"><%= error %></div>
 <% } %>
@@ -26,6 +26,19 @@
   <div class="mb-3">
     <label for="email" class="form-label">Email</label>
     <input type="email" class="form-control" id="email" name="email" required>
+  </div>
+  <h4>Permissions</h4>
+  <div class="mb-3 form-check">
+    <input type="checkbox" class="form-check-input" id="can_entry" name="can_entry" checked>
+    <label class="form-check-label" for="can_entry">Can Access Entry</label>
+  </div>
+  <div class="mb-3 form-check">
+    <input type="checkbox" class="form-check-input" id="can_exit" name="can_exit" checked>
+    <label class="form-check-label" for="can_exit">Can Access Exit</label>
+  </div>
+  <div class="mb-3 form-check">
+    <input type="checkbox" class="form-check-input" id="can_manage" name="can_manage" checked>
+    <label class="form-check-label" for="can_manage">Can Access Manage</label>
   </div>
   <button type="submit" class="btn btn-primary">Add Admin</button>
 </form>

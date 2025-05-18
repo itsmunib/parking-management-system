@@ -1,0 +1,44 @@
+<%- include('partials/header') %>
+<h2>Edit Admin Permissions</h2>
+<% if (error && error !== 'null') { %>
+  <div class="alert alert-danger"><%= error %></div>
+<% } %>
+<% if (validationErrors && validationErrors.length > 0) { %>
+  <div class="alert alert-danger">
+    <ul>
+      <% validationErrors.forEach(error => { %>
+        <li><%= error %></li>
+      <% }) %>
+    </ul>
+  </div>
+<% } %>
+<% if (admin) { %>
+  <form action="/manage-admins/edit/<%= admin.id %>" method="POST">
+    <div class="mb-3">
+      <label for="username" class="form-label">Username</label>
+      <input type="text" class="form-control" id="username" value="<%= admin.username %>" disabled>
+    </div>
+    <div class="mb-3">
+      <label for="email" class="form-label">Email</label>
+      <input type="email" class="form-control" id="email" value="<%= admin.email %>" disabled>
+    </div>
+    <h4>Permissions</h4>
+    <div class="mb-3 form-check">
+      <input type="checkbox" class="form-check-input" id="can_entry" name="can_entry" <%= admin.permissions.entry ? 'checked' : '' %>>
+      <label class="form-check-label" for="can_entry">Can Access Entry</label>
+    </div>
+    <div class="mb-3 form-check">
+      <input type="checkbox" class="form-check-input" id="can_exit" name="can_exit" <%= admin.permissions.exit ? 'checked' : '' %>>
+      <label class="form-check-label" for="can_exit">Can Access Exit</label>
+    </div>
+    <div class="mb-3 form-check">
+      <input type="checkbox" class="form-check-input" id="can_manage" name="can_manage" <%= admin.permissions.manage ? 'checked' : '' %>>
+      <label class="form-check-label" for="can_manage">Can Access Manage</label>
+    </div>
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+    <a href="/manage-admins" class="btn btn-secondary">Cancel</a>
+  </form>
+<% } else { %>
+  <p>Admin not found.</p>
+<% } %>
+<%- include('partials/footer') %>

@@ -24,16 +24,13 @@
         <ul>
           <% validationErrors.forEach(function(error) { %>
             <li><%= error %></li>
-          <% }); %>
+          <% }) %>
         </ul>
       </div>
     <% } %>
     <% if (Array.isArray(lots) && lots.length > 0) { %>
       <% lots.forEach(function(lot) { %>
         <div class="card mb-3">
-          <div class="card-header">
-            <h4><%= lot && lot.name ? lot.name : 'Unnamed Lot' %></h4>
-          </div>
           <div class="card-body">
             <p><strong>Total Spaces:</strong> <%= lot && lot.totalSpaces !== undefined ? lot.totalSpaces : 0 %></p>
             <p><strong>Available Spaces:</strong> <%= lot && lot.available !== undefined ? lot.available : 0 %></p>
@@ -54,7 +51,7 @@
                       <td><%= category && category.pricing_type ? category.pricing_type : 'N/A' %></td>
                       <td>$<%= category && category.price !== undefined ? Number(category.price).toFixed(2) : '0.00' %></td>
                     </tr>
-                  <% }); %>
+                  <% }) %>
                 </tbody>
               </table>
             <% } else { %>
@@ -62,39 +59,38 @@
             <% } %>
             <h5>Park Your Vehicle</h5>
             <form action="/public/park" method="POST">
-              <input type="hidden" name="lot_id" value="<%= lot && lot.id ? lot.id : '' %>">
               <div class="mb-3">
-                <label for="number_plate_<%= lot.id %>" class="form-label">Number Plate</label>
-                <input type="text" class="form-control" id="number_plate_<%= lot.id %>" name="number_plate" value="<%= autofill && autofill.lot_id == lot.id ? autofill.number_plate : '' %>" required>
+                <label for="number_plate" class="form-label">Number Plate</label>
+                <input type="text" class="form-control" id="number_plate" name="number_plate" value="<%= autofill && autofill.number_plate ? autofill.number_plate : '' %>" required>
                 <small class="form-text text-muted">3-10 characters, uppercase letters and numbers only (e.g., ABC123)</small>
               </div>
               <div class="mb-3">
-                <label for="owner_name_<%= lot.id %>" class="form-label">Owner Name (Optional)</label>
-                <input type="text" class="form-control" id="owner_name_<%= lot.id %>" name="owner_name" value="<%= autofill && autofill.lot_id == lot.id ? autofill.owner_name : '' %>">
+                <label for="owner_name" class="form-label">Owner Name (Optional)</label>
+                <input type="text" class="form-control" id="owner_name" name="owner_name" value="<%= autofill && autofill.owner_name ? autofill.owner_name : '' %>">
                 <small class="form-text text-muted">1-50 characters, letters and spaces only</small>
               </div>
               <div class="mb-3">
-                <label for="phone_<%= lot.id %>" class="form-label">Phone (Optional)</label>
-                <input type="text" class="form-control" id="phone_<%= lot.id %>" name="phone" value="<%= autofill && autofill.lot_id == lot.id ? autofill.phone : '' %>">
+                <label for="phone" class="form-label">Phone (Optional)</label>
+                <input type="text" class="form-control" id="phone" name="phone" value="<%= autofill && autofill.phone ? autofill.phone : '' %>">
                 <small class="form-text text-muted">10-15 digits</small>
               </div>
               <div class="mb-3">
-                <label for="category_id_<%= lot.id %>" class="form-label">Vehicle Category</label>
-                <select class="form-select" id="category_id_<%= lot.id %>" name="category_id" required>
+                <label for="category_id" class="form-label">Vehicle Category</label>
+                <select class="form-select" id="category_id" name="category_id" required>
                   <% lot.categories.forEach(function(category) { %>
-                    <option value="<%= category && category.id ? category.id : '' %>" <%= autofill && autofill.lot_id == lot.id && autofill.category_id == category.id ? 'selected' : '' %>>
+                    <option value="<%= category && category.id ? category.id : '' %>" <%= autofill && autofill.category_id == category.id ? 'selected' : '' %>>
                       <%= category && category.name ? category.name : 'N/A' %>
                     </option>
-                  <% }); %>
+                  <% }) %>
                 </select>
               </div>
               <button type="submit" class="btn btn-primary">Park and Get Ticket</button>
             </form>
           </div>
         </div>
-      <% }); %>
+      <% }) %>
     <% } else { %>
-      <p>No parking lots available.</p>
+      <p>No parking available.</p>
     <% } %>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
