@@ -1,43 +1,66 @@
 <%- include('partials/header') %>
-<h2>Vehicle Entry</h2>
-<% if (error) { %>
-  <div class="alert alert-danger"><%= error %></div>
-<% } %>
-<% if (validationErrors && validationErrors.length > 0) { %>
-  <div class="alert alert-danger">
-    <ul>
-      <% validationErrors.forEach(error => { %>
-        <li><%= error %></li>
-      <% }) %>
-    </ul>
+<style>
+  .entry-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .form-group {
+    margin-bottom: 15px;
+  }
+  .form-group label {
+    font-weight: bold;
+  }
+  .lot-info {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+</style>
+<h2 class="text-center mb-4">Vehicle Entry</h2>
+<div class="entry-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <!-- Lot Information -->
+  <div class="lot-info">
+    <h4>Parking Lot Status</h4>
+    <p>Total Spaces: <%= lot.total_spaces %> | Used Spaces: <%= lot.used_spaces %> | Available Spaces: <%= lot.total_spaces - lot.used_spaces %></p>
   </div>
-<% } %>
-<form action="/entry" method="POST" id="entryForm">
-  <div class="mb-3">
-    <label for="number_plate" class="form-label">Number Plate</label>
-    <input type="text" class="form-control" id="number_plate" name="number_plate" value="<%= autofill.number_plate || '' %>" required>
-    <small class="form-text text-muted">3-10 characters, uppercase letters and numbers only (e.g., ABC123)</small>
-  </div>
-  <div class="mb-3">
-    <label for="owner_name" class="form-label">Owner Name (Optional)</label>
-    <input type="text" class="form-control" id="owner_name" name="owner_name" value="<%= autofill.owner_name || '' %>">
-    <small class="form-text text-muted">1-50 characters, letters and spaces only</small>
-  </div>
-  <div class="mb-3">
-    <label for="phone" class="form-label">Phone (Optional)</label>
-    <input type="text" class="form-control" id="phone" name="phone" value="<%= autofill.phone || '' %>">
-    <small class="form-text text-muted">10-15 digits</small>
-  </div>
-  <div class="mb-3">
-    <label for="category_id" class="form-label">Vehicle Category</label>
-    <select class="form-select" id="category_id" name="category_id" required>
-      <% categories.forEach(category => { %>
-        <option value="<%= category.id %>" <%= autofill.category_id == category.id ? 'selected' : '' %>>
-          <%= category.name %>
-        </option>
-      <% }) %>
-    </select>
-  </div>
-  <button type="submit" class="btn btn-primary">Submit</button>
-</form>
+  <!-- Entry Form -->
+  <form action="/entry" method="POST">
+    <div class="form-group">
+      <label for="number_plate">Number Plate:</label>
+      <input type="text" class="form-control" id="number_plate" name="number_plate" value="<%= autofill.number_plate || '' %>" required>
+    </div>
+    <div class="form-group">
+      <label for="owner_name">Owner Name (Optional):</label>
+      <input type="text" class="form-control" id="owner_name" name="owner_name" value="<%= autofill.owner_name || '' %>">
+    </div>
+    <div class="form-group">
+      <label for="phone">Phone Number (Optional):</label>
+      <input type="text" class="form-control" id="phone" name="phone" value="<%= autofill.phone || '' %>">
+    </div>
+    <div class="form-group">
+      <label for="category_id">Vehicle Category:</label>
+      <select class="form-control" id="category_id" name="category_id" required>
+        <% categories.forEach(category => { %>
+          <option value="<%= category.id %>" <%= autofill.category_id == category.id ? 'selected' : '' %>>
+            <%= category.name %> (Available Spaces: <%= category.available_spaces %>)
+          </option>
+        <% }) %>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block">Add Entry</button>
+    <% if (validationErrors && validationErrors.length > 0) { %>
+      <div class="alert alert-danger mt-2">
+        <% validationErrors.forEach(error => { %>
+          <p><%= error %></p>
+        <% }) %>
+      </div>
+    <% } %>
+  </form>
+</div>
 <%- include('partials/footer') %>

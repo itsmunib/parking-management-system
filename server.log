@@ -1,22 +1,140 @@
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-16T23:10:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-16T23:14:27.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-16T23:10:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-16T23:10:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-16T23:10:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-17T14:50:35.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-16T21:24:56.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-16T21:24:56.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-18T10:36:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-18T10:36:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-18T10:36:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A2222', `entry_time` = '2025-05-18T11:42:58.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-18T10:36:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-18T10:36:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-18T10:36:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-18T10:36:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-18T10:36:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-18T10:36:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-18T10:36:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A2222', `entry_time` = '2025-05-18T11:42:58.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-18T10:36:17.000Z', `owner_...' at line 1
-Process exit error: Error: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ' `number_plate` = 'A22B1', `entry_time` = '2025-05-18T10:36:17.000Z', `owner_...' at line 1
+<%- include('partials/header') %>
+<style>
+  .space-bar {
+    height: 20px;
+    margin-bottom: 10px;
+  }
+  .space-bar.available {
+    background-color: #28a745;
+  }
+  .space-bar.parked {
+    background-color: #dc3545;
+  }
+  .chart-container {
+    max-width: 600px;
+    margin: 0 auto;
+  }
+</style>
+<h2 class="text-center mb-4">Dashboard</h2>
+<% if (error) { %>
+  <div class="alert alert-danger text-center"><%= error %></div>
+<% } %>
+<div class="container">
+  <div class="row mb-4">
+    <div class="col-md-4">
+      <div class="card text-center">
+        <div class="card-body">
+          <h5 class="card-title">Vehicles Today</h5>
+          <p class="card-text"><%= vehicles %></p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-center">
+        <div class="card-body">
+          <h5 class="card-title">Earnings</h5>
+          <p class="card-text">$<%= earnings.toFixed(2) %></p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-center">
+        <div class="card-body">
+          <h5 class="card-title">Space Usage</h5>
+          <div class="space-bar available" style="width: <%= available > 0 ? (available / (available + (totalSpaces - available))) * 100 : 0 %>%;"></div>
+          <div>Available Spaces: <%= available %></div>
+          <div class="space-bar parked" style="width: <%= totalSpaces > 0 ? ((totalSpaces - available) / totalSpaces) * 100 : 0 %>%;"></div>
+          <div>Used Spaces: <%= totalSpaces - available %></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row mb-4">
+    <div class="col-12 text-center">
+      <a href="/dashboard?filter=today" class="btn btn-<%= filter === 'today' ? 'primary' : 'secondary' %> mx-2">Today</a>
+      <a href="/dashboard?filter=weekly" class="btn btn-<%= filter === 'weekly' ? 'primary' : 'secondary' %> mx-2">Weekly</a>
+      <a href="/dashboard?filter=monthly" class="btn btn-<%= filter === 'monthly' ? 'primary' : 'secondary' %> mx-2">Monthly</a>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-md-6">
+      <div class="chart-container">
+        <canvas id="vehicleChart"></canvas>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="chart-container">
+        <canvas id="earningsChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const vehicleCtx = document.getElementById('vehicleChart').getContext('2d');
+  new Chart(vehicleCtx, {
+    type: 'line',
+    data: {
+      labels: <%- JSON.stringify(chartLabels) %>,
+      datasets: [{
+        label: 'Vehicles',
+        data: <%- JSON.stringify(vehicleData) %>,
+        borderColor: '#007bff',
+        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Number of Vehicles'
+          }
+        },
+        x: {
+          title: {
+            display: true,
+            text: 'Date'
+          }
+        }
+      }
+    }
+  });
+
+  const earningsCtx = document.getElementById('earningsChart').getContext('2d');
+  new Chart(earningsCtx, {
+    type: 'line',
+    data: {
+      labels: <%- JSON.stringify(chartLabels) %>,
+      datasets: [{
+        label: 'Earnings ($)',
+        data: <%- JSON.stringify(earningsData) %>,
+        borderColor: '#28a745',
+        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Earnings ($)'
+          }
+        },
+        x: {
+          title: {
+            display: true,
+            text: 'Date'
+          }
+        }
+      }
+    }
+  });
+</script>
+<%- include('partials/footer') %>

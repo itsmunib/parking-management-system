@@ -1,0 +1,36 @@
+<%- include('partials/header') %>
+<style>
+  .confirm-delete-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .admin-info {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+  }
+</style>
+<h2 class="text-center mb-4">Confirm Delete Admin</h2>
+<div class="confirm-delete-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <% if (!admin) { %>
+    <div class="alert alert-danger text-center">Admin not found.</div>
+  <% } else { %>
+    <div class="admin-info">
+      <h4>Admin Details</h4>
+      <p><strong>Username:</strong> <%= admin.username %></p>
+      <p><strong>Email:</strong> <%= admin.email %></p>
+    </div>
+    <p class="text-center">Are you sure you want to delete this admin? This action cannot be undone.</p>
+    <form action="/manage-admins/delete/<%= admin.id %>" method="POST">
+      <input type="hidden" name="filter" value="<%= filter %>">
+      <button type="submit" class="btn btn-danger btn-block">Yes, Delete Admin</button>
+      <a href="/manage-admins?filter=<%= filter %>" class="btn btn-secondary btn-block mt-2">Cancel</a>
+    </form>
+  <% } %>
+</div>
+<%- include('partials/footer') %>

@@ -1,224 +1,164 @@
 <%- include('partials/header') %>
-<h2>Dashboard</h2>
-<% if (error && error !== 'null') { %>
-  <div class="alert alert-danger"><%= error %></div>
+<style>
+  .space-bar {
+    height: 20px;
+    margin-bottom: 10px;
+  }
+  .space-bar.available {
+    background-color: #28a745;
+  }
+  .space-bar.parked {
+    background-color: #dc3545;
+  }
+  .chart-container {
+    max-width: 600px;
+    margin: 0 auto;
+  }
+</style>
+<h2 class="text-center mb-4">Dashboard</h2>
+<% if (error) { %>
+  <div class="alert alert-danger text-center"><%= error %></div>
 <% } %>
-<div class="mb-3">
-  <form action="/dashboard" method="GET">
-    <label for="filter" class="form-label">Filter Analytics:</label>
-    <select name="filter" id="filter" class="form-select d-inline w-auto" onchange="this.form.submit()">
-      <option value="today" <%= filter === 'today' ? 'selected' : '' %>>Today</option>
-      <option value="weekly" <%= filter === 'weekly' ? 'selected' : '' %>>Weekly</option>
-      <option value="monthly" <%= filter === 'monthly' ? 'selected' : '' %>>Monthly</option>
-    </select>
-  </form>
-  <button class="btn btn-secondary mt-2" onclick="refreshDashboardStats()">Refresh Stats</button>
-</div>
-<div class="row">
-  <div class="col-md-6">
-    <div class="card">
-      <div class="card-body">
-        <h5 class="card-title">Vehicles and Earnings Over Time</h5>
-        <canvas id="vehiclesEarningsChart"></canvas>
+<div class="container">
+  <div class="row mb-4">
+    <div class="col-md-4">
+      <div class="card text-center">
+        <div class="card-body">
+          <h5 class="card-title">Vehicles Today</h5>
+          <p class="card-text"><%= vehicles %></p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-center">
+        <div class="card-body">
+          <h5 class="card-title">Earnings</h5>
+          <p class="card-text text-center" id="earnings">$<%= (Number(earnings) || 0).toFixed(2) %></p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-center">
+        <div class="card-body">
+          <h5 class="card-title">Space Usage</h5>
+          <div class="space-bar available" style="width: <%= available > 0 ? (available / (available + (totalSpaces - available))) * 100 : 0 %>%;"></div>
+          <div>Available Spaces: <%= available %></div>
+          <div class="space-bar parked" style="width: <%= totalSpaces > 0 ? ((totalSpaces - available) / totalSpaces) * 100 : 0 %>%;"></div>
+          <div>Used Spaces: <%= totalSpaces - available %></div>
+        </div>
       </div>
     </div>
   </div>
-  <div class="col-md-6">
-    <div class="card">
-      <div class="card-body">
-        <h5 class="card-title">Current Space Usage</h5>
-        <canvas id="spaceChart"></canvas>
-      </div>
+  <div class="row mb-4">
+    <div class="col-12 text-center">
+      <a href="/dashboard?filter=today" class="btn btn-<%= filter === 'today' ? 'primary' : 'secondary' %> mx-2">Today</a>
+      <a href="/dashboard?filter=weekly" class="btn btn-<%= filter === 'weekly' ? 'primary' : 'secondary' %> mx-2">Weekly</a>
+      <a href="/dashboard?filter=monthly" class="btn btn-<%= filter === 'monthly' ? 'primary' : 'secondary' %> mx-2">Monthly</a>
     </div>
   </div>
-</div>
-<div class="row mt-4">
-  <div class="col-md-3">
-    <div class="card">
-      <div class="card-body">
-        <h5 class="card-title">Today's Vehicles</h5>
-        <p class="card-text" id="vehicles"><%= vehicles %></p>
+  <div class="row">
+    <div class="col-md-6">
+      <div class="chart-container">
+        <canvas id="vehicleChart"></canvas>
       </div>
     </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card">
-      <div class="card-body">
-        <h5 class="card-title">Earnings</h5>
-        <p class="card-text" id="earnings">$<%= earnings.toFixed(2) %></p>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card">
-      <div class="card-body">
-        <h5 class="card-title">Platform Fee (5%)</h5>
-        <p class="card-text" id="platformFee">$<%= platformFee.toFixed(2) %></p>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card">
-      <div class="card-body">
-        <h5 class="card-title">Available Spaces</h5>
-        <p class="card-text" id="available"><%= available %></p>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card">
-      <div class="card-body">
-        <h5 class="card-title">Parked Spaces</h5>
-        <p class="card-text" id="parked"><%= parked %></p>
+    <div class="col-md-6">
+      <div class="chart-container">
+        <canvas id="earningsChart"></canvas>
       </div>
     </div>
   </div>
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js?t=<%= Date.now() %>"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// Log initial client-side data
-console.log('Initial client-side dashboard stats:', {
-  parked: <%= parked %>,
-  earnings: <%= earnings %>,
-  available: <%= available %>
-});
+  const isTodayFilter = '<%= filter %>' === 'today';
+  const chartType = isTodayFilter ? 'bar' : 'line';
 
-// Destroy existing charts if they exist
-if (window.vehiclesEarningsChart) {
-  window.vehiclesEarningsChart.destroy();
-}
-if (window.spaceChart) {
-  window.spaceChart.destroy();
-}
-
-// Initialize charts
-const ctx1 = document.getElementById('vehiclesEarningsChart').getContext('2d');
-window.vehiclesEarningsChart = new Chart(ctx1, {
-  type: 'line',
-  data: {
-    labels: <%- JSON.stringify(chartLabels) %>,
-    datasets: [
-      {
+  const vehicleCtx = document.getElementById('vehicleChart').getContext('2d');
+  new Chart(vehicleCtx, {
+    type: chartType,
+    data: {
+      labels: <%- JSON.stringify(chartLabels) %>,
+      datasets: [{
         label: 'Vehicles',
         data: <%- JSON.stringify(vehicleData) %>,
-        borderColor: 'rgba(75, 192, 192, 1)',
-        backgroundColor: 'rgba(75, 192, 192, 0.2)',
-        fill: false
-      },
-      {
+        borderColor: '#007bff',
+        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+        fill: true,
+        barThickness: isTodayFilter ? 40 : undefined
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Number of Vehicles'
+          }
+        },
+        x: {
+          title: {
+            display: true,
+            text: 'Date'
+          },
+          ticks: {
+            autoSkip: false,
+            maxRotation: 0,
+            minRotation: 0,
+            callback: function(value, index, values) {
+              // Format the date to show only the day for non-today filters
+              const date = new Date(this.getLabelForValue(value));
+              return isTodayFilter ? date.toISOString().split('T')[0] : date.getDate();
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const earningsCtx = document.getElementById('earningsChart').getContext('2d');
+  new Chart(earningsCtx, {
+    type: chartType,
+    data: {
+      labels: <%- JSON.stringify(chartLabels) %>,
+      datasets: [{
         label: 'Earnings ($)',
         data: <%- JSON.stringify(earningsData) %>,
-        borderColor: 'rgba(255, 99, 132, 1)',
-        backgroundColor: 'rgba(255, 99, 132, 0.2)',
-        fill: false
-      }
-    ]
-  },
-  options: {
-    responsive: true,
-    scales: {
-      y: {
-        beginAtZero: true,
-        title: {
-          display: true,
-          text: 'Count / Earnings ($)'
-        }
-      },
-      x: {
-        title: {
-          display: true,
-          text: 'Date'
-        }
-      }
-    }
-  }
-});
-
-const ctx2 = document.getElementById('spaceChart').getContext('2d');
-window.spaceChart = new Chart(ctx2, {
-  type: 'bar',
-  data: {
-    labels: ['Available Spaces', 'Parked Spaces'],
-    datasets: [{
-      label: 'Spaces',
-      data: [<%= available %>, <%= parked %>],
-      backgroundColor: [
-        'rgba(54, 162, 235, 0.2)',
-        'rgba(255, 206, 86, 0.2)'
-      ],
-      borderColor: [
-        'rgba(54, 162, 235, 1)',
-        'rgba(255, 206, 86, 1)'
-      ],
-      borderWidth: 1
-    }]
-  },
-  options: {
-    responsive: true,
-    scales: {
-      y: {
-        beginAtZero: true,
-        title: {
-          display: true,
-          text: 'Number of Spaces'
+        borderColor: '#28a745',
+        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+        fill: true,
+        barThickness: isTodayFilter ? 40 : undefined
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Earnings ($)'
+          }
+        },
+        x: {
+          title: {
+            display: true,
+            text: 'Date'
+          },
+          ticks: {
+            autoSkip: false,
+            maxRotation: 0,
+            minRotation: 0,
+            callback: function(value, index, values) {
+              const date = new Date(this.getLabelForValue(value));
+              return isTodayFilter ? date.toISOString().split('T')[0] : date.getDate();
+            }
+          }
         }
       }
     }
-  }
-});
-
-// Function to fetch and update dashboard stats
-function refreshDashboardStats() {
-  fetch('/dashboard?t=' + Date.now(), { cache: 'no-store' })
-    .then(response => response.text())
-    .then(html => {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      
-      // Update raw stats
-      document.getElementById('vehicles').textContent = doc.querySelector('#vehicles').textContent;
-      document.getElementById('earnings').textContent = doc.querySelector('#earnings').textContent;
-      document.getElementById('platformFee').textContent = doc.querySelector('#platformFee').textContent;
-      document.getElementById('available').textContent = doc.querySelector('#available').textContent;
-      document.getElementById('parked').textContent = doc.querySelector('#parked').textContent;
-
-      // Extract new chart data from the HTML
-      const newChartLabels = JSON.parse(doc.querySelector('#chartLabelsData').textContent);
-      const newVehicleData = JSON.parse(doc.querySelector('#vehicleData').textContent);
-      const newEarningsData = JSON.parse(doc.querySelector('#earningsData').textContent);
-      const newAvailable = parseInt(doc.querySelector('#available').textContent);
-      const newParked = parseInt(doc.querySelector('#parked').textContent);
-
-      // Update charts
-      window.vehiclesEarningsChart.data.labels = newChartLabels;
-      window.vehiclesEarningsChart.data.datasets[0].data = newVehicleData;
-      window.vehiclesEarningsChart.data.datasets[1].data = newEarningsData;
-      window.vehiclesEarningsChart.update();
-
-      window.spaceChart.data.datasets[0].data = [newAvailable, newParked];
-      window.spaceChart.update();
-
-      console.log('Dashboard stats updated:', {
-        parked: newParked,
-        earnings: parseFloat(doc.querySelector('#earnings').textContent.replace('$', '')),
-        available: newAvailable
-      });
-    })
-    .catch(err => console.error('Failed to refresh dashboard stats:', err));
-}
-
-// Force full refresh if hardrefresh parameter is present
-if ('<%= hardRefresh %>' !== 'null') {
-  console.log('Hard refresh detected, forcing full reload...');
-  window.location.reload(true);
-} else if (window.location.search.includes('t=')) {
-  console.log('Detected redirect from exit, refreshing stats...');
-  setTimeout(refreshDashboardStats, 500);
-}
+  });
 </script>
-<!-- Hidden elements to store chart data for refresh -->
-<script id="chartLabelsData" type="application/json"><%- JSON.stringify(chartLabels) %></script>
-<script id="vehicleData" type="application/json"><%- JSON.stringify(vehicleData) %></script>
-<script id="earningsData" type="application/json"><%- JSON.stringify(earningsData) %></script>
 <%- include('partials/footer') %>

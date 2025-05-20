@@ -1,138 +1,54 @@
 <%- include('partials/header') %>
-<h2>Vehicle Exit</h2>
-<% if (typeof error !== 'undefined' && error && error !== 'null') { %>
-  <div class="alert alert-danger"><%= error %></div>
-<% } %>
-<% if (Array.isArray(entries) && entries.length > 0) { %>
-  <table class="table table-striped">
+<style>
+  .exit-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .entries-table {
+    margin-top: 20px;
+  }
+</style>
+<h2 class="text-center mb-4">Vehicle Exit</h2>
+<div class="exit-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <!-- Entries Table -->
+  <table class="table table-bordered entries-table">
     <thead>
       <tr>
         <th>Number Plate</th>
+        <th>Entry Time</th>
+        <th>Owner Name</th>
+        <th>Phone</th>
+        <th>Category</th>
         <th>Action</th>
       </tr>
     </thead>
     <tbody>
-      <% entries.forEach(function(entry, index) { %>
+      <% if (entries && entries.length > 0) { %>
+        <% entries.forEach(entry => { %>
+          <tr>
+            <td><%= entry.number_plate %></td>
+            <td><%= new Date(entry.entry_time).toLocaleString() %></td>
+            <td><%= entry.owner_name || 'N/A' %></td>
+            <td><%= entry.phone || 'N/A' %></td>
+            <td><%= entry.category || 'Unknown' %></td>
+            <td>
+              <form action="/exit" method="POST">
+                <input type="hidden" name="entry_id" value="<%= entry.id %>">
+                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to process this exit?');">Exit</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      <% } else { %>
         <tr>
-          <td><%= entry && entry.number_plate ? entry.number_plate : 'N/A' %></td>
-          <td>
-            <script>
-              console.log('Entry <%= index %>:', <%- JSON.stringify(entry) %>);
-            </script>
-            <button class="btn btn-primary" onclick="showExitModal(
-              <%= entry.id || '' %>,
-              '<%= entry.number_plate ? entry.number_plate.replace(/'/g, "\\'") : 'N/A' %>',
-              '<%= entry.entry_time ? new Date(entry.entry_time).toISOString() : '' %>',
-              '<%= entry.owner_name ? entry.owner_name.replace(/'/g, "\\'") : 'N/A' %>',
-              '<%= entry.phone ? entry.phone.replace(/'/g, "\\'") : 'N/A' %>',
-              '<%= entry.category ? entry.category.replace(/'/g, "\\'") : 'N/A' %>',
-              '<%= entry.pricing_type || 'per-entry' %>',
-              <%= parseFloat(entry.price) || 0 %>
-            )">Exit</button>
-          </td>
+          <td colspan="6" class="text-center">No vehicles currently parked.</td>
         </tr>
-      <% }) %>
+      <% } %>
     </tbody>
   </table>
-<% } else { %>
-  <p>No vehicles currently parked.</p>
-<% } %>
-
-<div class="modal fade" id="exitModal" tabindex="-1" aria-labelledby="exitModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="exitModalLabel">Exit Details</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <p><strong>Number Plate:</strong> <span id="modal_number_plate"></span></p>
-        <p><strong>Owner Name:</strong> <span id="modal_owner_name"></span></p>
-        <p><strong>Phone:</strong> <span id="modal_phone"></span></p>
-        <p><strong>Category:</strong> <span id="modal_category"></span></p>
-        <p><strong>Entry Time:</strong> <span id="modal_entry_time"></span></p>
-        <p><strong>Cost:</strong> $<span id="modal_cost"></span></p>
-        <div class="form-check">
-          <input type="checkbox" class="form-check-input" id="paid" onchange="toggleExitButton()">
-          <label class="form-check-label" for="paid">Paid</label>
-        </div>
-        <input type="hidden" id="entryId">
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-        <button type="button" class="btn btn-primary" id="exitButton" disabled onclick="submitExit()">Exit</button>
-      </div>
-    </div>
-  </div>
 </div>
 <%- include('partials/footer') %>
-<script>
-  let currentEntryId;
-  let currentCost;
-
-  function showExitModal(id, numberPlate, entryTime, ownerName, phone, category, pricingType, price) {
-    console.log('showExitModal called with:', { id, numberPlate, entryTime, ownerName, phone, category, pricingType, price });
-
-    currentEntryId = id || '';
-    currentCost = 0;
-
-    document.getElementById('modal_number_plate').textContent = numberPlate || 'N/A';
-    document.getElementById('modal_owner_name').textContent = ownerName || 'N/A';
-    document.getElementById('modal_phone').textContent = phone || 'N/A';
-    document.getElementById('modal_category').textContent = category || 'N/A';
-    document.getElementById('modal_entry_time').textContent = entryTime ? new Date(entryTime).toLocaleString() : 'N/A';
-
-    const entryDate = entryTime ? new Date(entryTime) : new Date();
-    const exitDate = new Date();
-    const parsedPrice = parseFloat(price) || 0;
-    if (pricingType === 'hourly') {
-      const hours = Math.ceil((exitDate - entryDate) / (1000 * 60 * 60));
-      currentCost = hours * parsedPrice;
-    } else {
-      currentCost = parsedPrice;
-    }
-    document.getElementById('modal_cost').textContent = currentCost.toFixed(2);
-
-    document.getElementById('entryId').value = currentEntryId;
-
-    new bootstrap.Modal(document.getElementById('exitModal')).show();
-  }
-
-  function toggleExitButton() {
-    const paidCheckbox = document.getElementById('paid');
-    const exitButton = document.getElementById('exitButton');
-    exitButton.disabled = !paidCheckbox.checked;
-    console.log('Toggle exit button:', { paid: paidCheckbox.checked, disabled: exitButton.disabled });
-  }
-
-  function submitExit() {
-    console.log('submitExit called');
-    const entryIdInput = document.getElementById('entryId');
-    console.log('Entry ID to submit:', entryIdInput.value);
-
-    if (!entryIdInput.value) {
-      console.error('Entry ID is empty, cannot submit');
-      alert('Error: Entry ID is missing. Please try again.');
-      return;
-    }
-
-    try {
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = '/exit';
-
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'entry_id';
-      input.value = entryIdInput.value;
-      form.appendChild(input);
-
-      document.body.appendChild(form);
-      console.log('Submitting form:', form);
-      form.submit();
-    } catch (err) {
-      console.error('Error submitting exit form:', err);
-      alert('Failed to process exit: ' + err.message);
-    }
-  }
-</script>

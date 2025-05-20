@@ -1,45 +1,61 @@
 <%- include('partials/header') %>
-<h2>Add Admin</h2>
-<% if (error && error !== 'null') { %>
-  <div class="alert alert-danger"><%= error %></div>
-<% } %>
-<% if (validationErrors && validationErrors.length > 0) { %>
-  <div class="alert alert-danger">
-    <ul>
-      <% validationErrors.forEach(error => { %>
-        <li><%= error %></li>
-      <% }) %>
-    </ul>
-  </div>
-<% } %>
-<form action="/add-admin" method="POST">
-  <div class="mb-3">
-    <label for="username" class="form-label">Username</label>
-    <input type="text" class="form-control" id="username" name="username" required>
-    <small class="form-text text-muted">3-20 characters, letters and numbers only</small>
-  </div>
-  <div class="mb-3">
-    <label for="password" class="form-label">Password</label>
-    <input type="password" class="form-control" id="password" name="password" required>
-    <small class="form-text text-muted">At least 8 characters</small>
-  </div>
-  <div class="mb-3">
-    <label for="email" class="form-label">Email</label>
-    <input type="email" class="form-control" id="email" name="email" required>
-  </div>
-  <h4>Permissions</h4>
-  <div class="mb-3 form-check">
-    <input type="checkbox" class="form-check-input" id="can_entry" name="can_entry" checked>
-    <label class="form-check-label" for="can_entry">Can Access Entry</label>
-  </div>
-  <div class="mb-3 form-check">
-    <input type="checkbox" class="form-check-input" id="can_exit" name="can_exit" checked>
-    <label class="form-check-label" for="can_exit">Can Access Exit</label>
-  </div>
-  <div class="mb-3 form-check">
-    <input type="checkbox" class="form-check-input" id="can_manage" name="can_manage" checked>
-    <label class="form-check-label" for="can_manage">Can Access Manage</label>
-  </div>
-  <button type="submit" class="btn btn-primary">Add Admin</button>
-</form>
+<style>
+  .add-admin-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .form-group {
+    margin-bottom: 15px;
+  }
+  .form-group label {
+    font-weight: bold;
+  }
+  .checkbox-group {
+    margin-top: 10px;
+  }
+</style>
+<h2 class="text-center mb-4">Add New Admin</h2>
+<div class="add-admin-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <form action="/add-admin" method="POST">
+    <div class="form-group">
+      <label for="username">Username:</label>
+      <input type="text" class="form-control" id="username" name="username" required>
+    </div>
+    <div class="form-group">
+      <label for="password">Password:</label>
+      <input type="password" class="form-control" id="password" name="password" required>
+    </div>
+    <div class="form-group">
+      <label for="email">Email:</label>
+      <input type="email" class="form-control" id="email" name="email" required>
+    </div>
+    <div class="form-group checkbox-group">
+      <label>Permissions:</label><br>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="can_entry" name="can_entry">
+        <label class="form-check-label" for="can_entry">Can Entry</label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="can_exit" name="can_exit">
+        <label class="form-check-label" for="can_exit">Can Exit</label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="can_manage" name="can_manage">
+        <label class="form-check-label" for="can_manage">Can Manage</label>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block">Add Admin</button>
+    <% if (validationErrors && validationErrors.length > 0) { %>
+      <div class="alert alert-danger mt-2">
+        <% validationErrors.forEach(error => { %>
+          <p><%= error %></p>
+        <% }) %>
+      </div>
+    <% } %>
+  </form>
+</div>
 <%- include('partials/footer') %>

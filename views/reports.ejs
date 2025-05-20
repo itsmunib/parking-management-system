@@ -1,0 +1,85 @@
+<%- include('partials/header') %>
+<style>
+  .reports-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .stats-card {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .filter-buttons {
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .filter-buttons .btn {
+    margin: 0 5px;
+  }
+  .activity-table {
+    margin-top: 20px;
+  }
+</style>
+<h2 class="text-center mb-4">Reports</h2>
+<div class="reports-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <!-- Filter Buttons -->
+  <div class="filter-buttons">
+    <a href="/reports?filter=today" class="btn <%= filter === 'today' ? 'btn-primary' : 'btn-secondary' %>">Today</a>
+    <a href="/reports?filter=weekly" class="btn <%= filter === 'weekly' ? 'btn-primary' : 'btn-secondary' %>">Weekly</a>
+    <a href="/reports?filter=monthly" class="btn <%= filter === 'monthly' ? 'btn-primary' : 'btn-secondary' %>">Monthly</a>
+  </div>
+  <!-- Stats Cards -->
+  <div class="row">
+    <div class="col-md-4">
+      <div class="stats-card">
+        <h4>Total Earnings (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h4>
+        <p>$<%= totalEarnings.toFixed(2) %></p>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="stats-card">
+        <h4>Total Entries (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h4>
+        <p><%= totalEntries %></p>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="stats-card">
+        <h4>Total Exits (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h4>
+        <p><%= totalExits %></p>
+      </div>
+    </div>
+  </div>
+  <!-- Admin Activity Table -->
+  <h4>Admin Activity (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h4>
+  <table class="table table-bordered activity-table">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Entries</th>
+        <th>Exits</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (adminActivity && adminActivity.length > 0) { %>
+        <% adminActivity.forEach(activity => { %>
+          <tr>
+            <td><%= activity.username %></td>
+            <td><%= activity.entries_count || 0 %></td>
+            <td><%= activity.exits_count || 0 %></td>
+          </tr>
+        <% }) %>
+      <% } else { %>
+        <tr>
+          <td colspan="3" class="text-center">No admin activity found.</td>
+        </tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+<%- include('partials/footer') %>

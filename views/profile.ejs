@@ -1,0 +1,48 @@
+<%- include('partials/header') %>
+<style>
+  .profile-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .form-group {
+    margin-bottom: 15px;
+  }
+  .form-group label {
+    font-weight: bold;
+  }
+</style>
+<h2 class="text-center mb-4">My Profile</h2>
+<div class="profile-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <% if (success) { %>
+    <div class="alert alert-success text-center"><%= success %></div>
+  <% } %>
+  <!-- Edit Profile Form -->
+  <h4>Edit Profile</h4>
+  <form action="/profile" method="POST">
+    <div class="form-group">
+      <label for="username">Username:</label>
+      <input type="text" class="form-control" id="username" name="username" value="<%= admin.username %>" required>
+    </div>
+    <div class="form-group">
+      <label for="email">Email:</label>
+      <input type="email" class="form-control" id="email" name="email" value="<%= admin.email %>" required>
+    </div>
+    <div class="form-group">
+      <label for="password">New Password (leave blank to keep current):</label>
+      <input type="password" class="form-control" id="password" name="password">
+    </div>
+    <button type="submit" class="btn btn-primary">Update Profile</button>
+    <% if (validationErrors && validationErrors.length > 0) { %>
+      <div class="alert alert-danger mt-2">
+        <% validationErrors.forEach(error => { %>
+          <p><%= error %></p>
+        <% }) %>
+      </div>
+    <% } %>
+  </form>
+</div>
+<%- include('partials/footer') %>

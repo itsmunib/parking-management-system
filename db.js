@@ -27,12 +27,14 @@ const dbConfig = process.env.NODE_ENV === 'production' && process.env.CLEARDB_DA
       database: process.env.DB_NAME || 'parking_system'
     };
 
-// Log the configuration being used for debugging
-console.log('Database Configuration:', {
-  host: dbConfig.host,
-  user: dbConfig.user,
-  database: dbConfig.database
-});
+// Only log in development for debugging
+if (process.env.NODE_ENV !== 'production') {
+  console.log('Database Configuration:', {
+    host: dbConfig.host,
+    user: dbConfig.user,
+    database: dbConfig.database
+  });
+}
 
 const pool = mysql.createPool(dbConfig);
 

@@ -40,7 +40,6 @@ app.use(
 // Authentication middleware
 const isAuthenticated = (req, res, next) => {
   if (req.session.admin) {
-    // Parse permissions if it's a string
     if (typeof req.session.admin.permissions === 'string') {
       try {
         req.session.admin.permissions = JSON.parse(req.session.admin.permissions);
@@ -109,6 +108,14 @@ const validateTotalSpaces = (total_spaces) => {
   return null;
 };
 
+const validateSpacesPerVehicle = (spaces_per_vehicle) => {
+  const num = Number(spaces_per_vehicle);
+  if (!Number.isInteger(num) || num < 1) {
+    return 'Spaces per vehicle must be a positive integer';
+  }
+  return null;
+};
+
 const validatePricingType = (pricing_type) => {
   if (!['hourly', 'per-entry'].includes(pricing_type)) {
     return 'Pricing type must be "hourly" or "per-entry"';
@@ -158,20 +165,21 @@ app.get('/', isAuthenticated, (req, res) => {
   res.redirect('/dashboard');
 });
 
-// Routes
+// Login Routes
 app.get('/login', (req, res) => {
   console.log('GET /login');
-  res.render('login', { error: null });
+  res.render('login', { error: null, success: null, user: null });
 });
 
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
-  console.log('POST /login:', { username });
+  console.log('POST /login:', { username, password: password ? '[REDACTED]' : 'Not provided' });
   try {
     const [rows] = await db.pool.query('SELECT * FROM admins WHERE username = ?', [username]);
     console.log('Database user:', rows);
     if (rows.length > 0) {
       const match = await bcrypt.compare(password, rows[0].password);
+      console.log('Password match result:', match);
       if (match) {
         if (typeof rows[0].permissions === 'string') {
           rows[0].permissions = JSON.parse(rows[0].permissions);
@@ -182,19 +190,20 @@ app.post('/login', async (req, res) => {
         res.redirect('/');
       } else {
         console.log('Invalid credentials for:', username);
-        res.render('login', { error: 'Invalid credentials' });
+        res.render('login', { error: 'Invalid credentials', success: null, user: null });
       }
     } else {
       console.log('User not found:', username);
-      res.render('login', { error: 'Invalid credentials' });
+      res.render('login', { error: 'Invalid credentials', success: null, user: null });
     }
   } catch (err) {
     console.error('Login error:', err);
     fs.writeFileSync('server.log', `Login error: ${err}\n`, { flag: 'a' });
-    res.render('login', { error: 'Server error' });
+    res.render('login', { error: 'Server error', success: null, user: null });
   }
 });
 
+// Dashboard Route
 app.get('/dashboard', isAuthenticated, async (req, res) => {
   console.log('GET /dashboard');
   try {
@@ -209,31 +218,33 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     let dateCondition = '';
     if (filter === 'weekly') {
       days = 7;
-      dateCondition = 'AND DATE(x.exit_time) >= CURDATE() - INTERVAL 7 DAY';
+      dateCondition = 'AND DATE(x.exit_time) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)';
     } else if (filter === 'monthly') {
       days = 30;
-      dateCondition = 'AND DATE(x.exit_time) >= CURDATE() - INTERVAL 30 DAY';
+      dateCondition = 'AND DATE(x.exit_time) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)';
     } else {
+      days = 1;
       dateCondition = 'AND DATE(x.exit_time) = CURDATE()';
     }
 
     const [vehicleCounts] = await db.pool.query(
       `SELECT DATE(e.entry_time) as date, COUNT(*) as count 
        FROM entries e 
-       WHERE DATE(e.entry_time) >= CURDATE() - INTERVAL ? DAY 
+       WHERE 1=1 ${filter === 'today' ? 'AND DATE(e.entry_time) = CURDATE()' : 'AND DATE(e.entry_time) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)'} 
        GROUP BY DATE(e.entry_time) 
        ORDER BY DATE(e.entry_time)`,
       [days]
     );
+    console.log('Vehicle counts for chart:', vehicleCounts);
 
     const [earningsPerDay] = await db.pool.query(
       `SELECT DATE(x.exit_time) as date, COALESCE(SUM(x.cost), 0) as total 
        FROM exits x 
-       WHERE DATE(x.exit_time) >= CURDATE() - INTERVAL ? DAY 
+       WHERE 1=1 ${dateCondition} 
        GROUP BY DATE(x.exit_time) 
-       ORDER BY DATE(x.exit_time)`,
-      [days]
+       ORDER BY DATE(x.exit_time)`
     );
+    console.log('Earnings per day for chart:', earningsPerDay);
 
     const [vehicles] = await db.pool.query(
       `SELECT COUNT(*) as count FROM entries WHERE DATE(entry_time) = CURDATE()`
@@ -243,49 +254,105 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
        FROM exits x 
        WHERE 1=1 ${dateCondition}`
     );
-    const [parked] = await db.pool.query(
-      `SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)`
+    const [parkedVehicles] = await db.pool.query(
+      `SELECT e.category_id, vc.spaces_per_vehicle 
+       FROM entries e 
+       JOIN vehicle_categories vc ON e.category_id = vc.id 
+       WHERE e.id NOT IN (SELECT entry_id FROM exits)`
     );
-    const [totalSpaces] = await db.pool.query(
-      `SELECT SUM(total_spaces) as total FROM vehicle_categories`
-    );
-    const available = totalSpaces[0].total ? totalSpaces[0].total - parked[0].count : 0;
+    const [lot] = await db.pool.query('SELECT total_spaces FROM parking_lot WHERE id = 1');
 
-    console.log('Dashboard queries:', { vehicles: vehicles[0], earnings: earnings[0], parked: parked[0], totalSpaces: totalSpaces[0] });
+    const totalSpaces = lot.length > 0 ? Number(lot[0].total_spaces) || 0 : 0;
+    const totalUsedSpaces = parkedVehicles.reduce((sum, vehicle) => {
+      return sum + (Number(vehicle.spaces_per_vehicle) || 1);
+    }, 0);
+    const parkedCount = parkedVehicles.length;
+    const available = totalSpaces - totalUsedSpaces;
 
-    const platformFee = (earnings[0].total || 0) * 0.05;
-    const tenantEarnings = (earnings[0].total || 0) - platformFee;
+    console.log('Dashboard queries:', { vehicles: vehicles[0], earnings: earnings[0], parkedCount, totalUsedSpaces, totalSpaces, available });
 
     const labels = [];
     const vehicleData = [];
     const earningsData = [];
     const today = new Date();
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(today.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
+    const todayPKT = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+    console.log('Today’s date (PKT):', todayPKT.toISOString().split('T')[0]);
+
+    const vehicleCountsPKT = vehicleCounts.map(v => {
+      const dateUTC = new Date(v.date);
+      const datePKT = new Date(dateUTC.getTime() + (5 * 60 * 60 * 1000));
+      return { ...v, date: datePKT };
+    });
+    console.log('Vehicle counts adjusted to PKT:', vehicleCountsPKT);
+
+    const earningsPerDayPKT = earningsPerDay.map(e => {
+      const dateUTC = new Date(e.date);
+      const datePKT = new Date(dateUTC.getTime() + (5 * 60 * 60 * 1000));
+      return { ...e, date: datePKT };
+    });
+    console.log('Earnings per day adjusted to PKT:', earningsPerDayPKT);
+
+    if (filter === 'today') {
+      const dateStr = todayPKT.toISOString().split('T')[0];
       labels.push(dateStr);
 
-      const vehicleEntry = vehicleCounts.find(v => v.date.toISOString().split('T')[0] === dateStr);
-      vehicleData.push(vehicleEntry ? vehicleEntry.count : 0);
+      const vehicleEntry = vehicleCountsPKT.find(v => {
+        const entryDateStr = v.date ? v.date.toISOString().split('T')[0] : null;
+        console.log('Comparing vehicle date:', { entryDateStr, dateStr });
+        return entryDateStr === dateStr;
+      });
+      vehicleData.push(vehicleEntry ? vehicleEntry.count : vehicles[0].count || 0);
 
-      const earningEntry = earningsPerDay.find(e => e.date.toISOString().split('T')[0] === dateStr);
-      earningsData.push(earningEntry ? earningEntry.total : 0);
+      const earningEntry = earningsPerDayPKT.find(e => {
+        const earningDateStr = e.date ? e.date.toISOString().split('T')[0] : null;
+        console.log('Comparing earning date:', { earningDateStr, dateStr });
+        return earningDateStr === dateStr;
+      });
+      const earningsTotal = earnings[0] ? parseFloat(earnings[0].total) || 0 : 0;
+      console.log('Earnings fallback:', { earningEntry, earningsTotal });
+      earningsData.push(earningEntry ? Number(earningEntry.total) : earningsTotal);
+    } else {
+      for (let i = 0; i < days; i++) {
+        const date = new Date(todayPKT);
+        date.setDate(todayPKT.getDate() - (days - 1) + i);
+        const dateStr = date.toISOString().split('T')[0];
+        labels.push(dateStr);
+
+        const vehicleEntry = vehicleCountsPKT.find(v => {
+          const entryDateStr = v.date ? v.date.toISOString().split('T')[0] : null;
+          console.log('Comparing vehicle date:', { entryDateStr, dateStr, index: i });
+          return entryDateStr === dateStr;
+        });
+        const vehicleValue = vehicleEntry ? vehicleEntry.count : 0;
+        vehicleData.push(vehicleValue);
+        console.log('Vehicle data point:', { date: dateStr, index: i, value: vehicleValue });
+
+        const earningEntry = earningsPerDayPKT.find(e => {
+          const earningDateStr = e.date ? e.date.toISOString().split('T')[0] : null;
+          console.log('Comparing earning date:', { earningDateStr, dateStr, index: i });
+          return earningDateStr === dateStr;
+        });
+        const earningValue = earningEntry ? Number(earningEntry.total) : 0;
+        earningsData.push(earningValue);
+        console.log('Earning data point:', { date: dateStr, index: i, value: earningValue });
+      }
     }
+
+    console.log('Chart data prepared:', { labels, vehicleData, earningsData });
 
     const renderData = {
       vehicles: vehicles[0].count || 0,
-      earnings: tenantEarnings,
-      platformFee,
+      earnings: Number(earnings[0].total) || 0,
       available,
-      parked: parked[0].count || 0,
+      parked: parkedCount,
+      totalSpaces,
       filter,
       error: null,
-      chartLabels: labels,
-      vehicleData,
-      earningsData,
-      user,
-      hardRefresh: req.query.hardrefresh || null
+      success: null,
+      chartLabels: labels || [],
+      vehicleData: vehicleData || [],
+      earningsData: earningsData || [],
+      user
     };
     console.log('Rendering dashboard with:', renderData);
 
@@ -296,11 +363,12 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     res.render('dashboard', {
       vehicles: 0,
       earnings: 0,
-      platformFee: 0,
       available: 0,
       parked: 0,
+      totalSpaces: 0,
       filter: 'today',
-      error: 'Server error',
+      error: 'Server error: ' + err.message,
+      success: null,
       chartLabels: [],
       vehicleData: [],
       earningsData: [],
@@ -310,6 +378,7 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
   }
 });
 
+// Manage Routes
 app.get('/manage', isAuthenticated, hasPermission('manage'), async (req, res) => {
   console.log('GET /manage');
   try {
@@ -317,30 +386,121 @@ app.get('/manage', isAuthenticated, hasPermission('manage'), async (req, res) =>
     const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     const formattedCategories = categories.map(category => ({
       ...category,
-      price: Number(category.price) || 0
+      price: Number(category.price) || 0,
+      spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
     }));
-    console.log('Manage categories:', formattedCategories);
-    res.render('manage', { categories: formattedCategories, error: null, editCategory: null, validationErrors: [], user });
+    console.log('Manage data:', { categories: formattedCategories });
+    res.render('manage', { categories: formattedCategories, error: null, success: null, editCategory: null, validationErrors: [], user });
   } catch (err) {
     console.error('Manage error:', err);
     fs.writeFileSync('server.log', `Manage error: ${err}\n`, { flag: 'a' });
-    res.render('manage', { categories: [], error: 'Server error', editCategory: null, validationErrors: [], user: req.session.admin });
+    res.render('manage', { categories: [], error: 'Server error', success: null, editCategory: null, validationErrors: [], user: req.session.admin });
+  }
+});
+
+app.post('/manage/set-lot-spaces', isAuthenticated, hasPermission('manage'), async (req, res) => {
+  const user = req.session.admin;
+  const { total_spaces } = req.body;
+  console.log('POST /manage/set-lot-spaces:', { total_spaces });
+
+  const validationErrors = [];
+  const spacesError = validateTotalSpaces(total_spaces);
+
+  if (spacesError) validationErrors.push(spacesError);
+
+  if (validationErrors.length > 0) {
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const formattedCategories = categories.map(category => ({
+      ...category,
+      price: Number(category.price) || 0,
+      spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
+    }));
+    return res.render('manage', { 
+      categories: formattedCategories, 
+      error: null, 
+      success: null, 
+      editCategory: null, 
+      validationErrors,
+      user
+    });
+  }
+
+  let usedSpaces = 0;
+  try {
+    const [lot] = await db.pool.query('SELECT used_spaces FROM parking_lot WHERE id = 1');
+    usedSpaces = lot.length > 0 && lot[0].used_spaces !== undefined ? Number(lot[0].used_spaces) || 0 : 0;
+    const newTotalSpaces = Number(total_spaces);
+
+    if (newTotalSpaces < usedSpaces) {
+      const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+      const formattedCategories = categories.map(category => ({
+        ...category,
+        price: Number(category.price) || 0,
+        spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
+      }));
+      validationErrors.push(`Total spaces (${newTotalSpaces}) cannot be less than used spaces (${usedSpaces})`);
+      return res.render('manage', { 
+        categories: formattedCategories, 
+        error: null, 
+        success: null, 
+        editCategory: null, 
+        validationErrors,
+        user
+      });
+    }
+
+    await db.pool.query(
+      'INSERT INTO parking_lot (id, total_spaces, used_spaces) VALUES (1, ?, ?) ON DUPLICATE KEY UPDATE total_spaces = ?',
+      [newTotalSpaces, usedSpaces, newTotalSpaces]
+    );
+
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const formattedCategories = categories.map(category => ({
+      ...category,
+      price: Number(category.price) || 0,
+      spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
+    }));
+    res.render('manage', { 
+      categories: formattedCategories, 
+      error: null, 
+      success: 'Total spaces updated successfully', 
+      editCategory: null, 
+      validationErrors: [], 
+      user
+    });
+  } catch (err) {
+    console.error('Set lot spaces error:', err);
+    fs.writeFileSync('server.log', `Set lot spaces error: ${err}\n`, { flag: 'a' });
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const formattedCategories = categories.map(category => ({
+      ...category,
+      price: Number(category.price) || 0,
+      spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
+    }));
+    res.render('manage', { 
+      categories: formattedCategories, 
+      error: 'Failed to set total spaces: ' + err.message, 
+      success: null, 
+      editCategory: null, 
+      validationErrors: [], 
+      user
+    });
   }
 });
 
 app.post('/manage/add-category', isAuthenticated, hasPermission('manage'), async (req, res) => {
   const user = req.session.admin;
-  const { name, total_spaces, pricing_type, price } = req.body;
-  console.log('POST /manage/add-category:', { name, total_spaces, pricing_type, price });
+  const { name, spaces_per_vehicle, pricing_type, price } = req.body;
+  console.log('POST /manage/add-category:', { name, spaces_per_vehicle, pricing_type, price });
   
   const validationErrors = [];
   const nameError = validateCategoryName(name);
-  const spacesError = validateTotalSpaces(total_spaces);
+  const spacesPerVehicleError = validateSpacesPerVehicle(spaces_per_vehicle);
   const pricingError = validatePricingType(pricing_type);
   const priceError = validatePrice(price);
 
   if (nameError) validationErrors.push(nameError);
-  if (spacesError) validationErrors.push(spacesError);
+  if (spacesPerVehicleError) validationErrors.push(spacesPerVehicleError);
   if (pricingError) validationErrors.push(pricingError);
   if (priceError) validationErrors.push(priceError);
 
@@ -348,11 +508,13 @@ app.post('/manage/add-category', isAuthenticated, hasPermission('manage'), async
     const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     const formattedCategories = categories.map(category => ({
       ...category,
-      price: Number(category.price) || 0
+      price: Number(category.price) || 0,
+      spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
     }));
     return res.render('manage', { 
       categories: formattedCategories, 
       error: null, 
+      success: null, 
       editCategory: null, 
       validationErrors,
       user
@@ -361,21 +523,36 @@ app.post('/manage/add-category', isAuthenticated, hasPermission('manage'), async
 
   try {
     await db.pool.query(
-      'INSERT INTO vehicle_categories (name, total_spaces, pricing_type, price) VALUES (?, ?, ?, ?)',
-      [name, total_spaces, pricing_type, price]
+      'INSERT INTO vehicle_categories (name, spaces_per_vehicle, pricing_type, price) VALUES (?, ?, ?, ?)',
+      [name, spaces_per_vehicle, pricing_type, price]
     );
-    res.redirect('/manage');
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const formattedCategories = categories.map(category => ({
+      ...category,
+      price: Number(category.price) || 0,
+      spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
+    }));
+    res.render('manage', { 
+      categories: formattedCategories, 
+      error: null, 
+      success: 'Category added successfully', 
+      editCategory: null, 
+      validationErrors: [], 
+      user
+    });
   } catch (err) {
     console.error('Add category error:', err);
     fs.writeFileSync('server.log', `Add category error: ${err}\n`, { flag: 'a' });
     const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     const formattedCategories = categories.map(category => ({
       ...category,
-      price: Number(category.price) || 0
+      price: Number(category.price) || 0,
+      spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
     }));
     res.render('manage', { 
       categories: formattedCategories, 
       error: 'Failed to add category', 
+      success: null, 
       editCategory: null, 
       validationErrors: [], 
       user
@@ -393,11 +570,13 @@ app.get('/manage/edit/:id', isAuthenticated, hasPermission('manage'), async (req
     if (category.length === 0) {
       const formattedCategories = categories.map(cat => ({
         ...cat,
-        price: Number(cat.price) || 0
+        price: Number(cat.price) || 0,
+        spaces_per_vehicle: Number(cat.spaces_per_vehicle) || 1
       }));
       return res.render('manage', { 
         categories: formattedCategories, 
         error: 'Category not found', 
+        success: null, 
         editCategory: null, 
         validationErrors: [], 
         user
@@ -405,12 +584,18 @@ app.get('/manage/edit/:id', isAuthenticated, hasPermission('manage'), async (req
     }
     const formattedCategories = categories.map(cat => ({
       ...cat,
-      price: Number(cat.price) || 0
+      price: Number(cat.price) || 0,
+      spaces_per_vehicle: Number(cat.spaces_per_vehicle) || 1
     }));
-    const formattedCategory = { ...category[0], price: Number(category[0].price) || 0 };
+    const formattedCategory = { 
+      ...category[0], 
+      price: Number(category[0].price) || 0,
+      spaces_per_vehicle: Number(category[0].spaces_per_vehicle) || 1
+    };
     res.render('manage', { 
       categories: formattedCategories, 
       error: null, 
+      success: null, 
       editCategory: formattedCategory, 
       validationErrors: [], 
       user
@@ -421,6 +606,7 @@ app.get('/manage/edit/:id', isAuthenticated, hasPermission('manage'), async (req
     res.render('manage', { 
       categories: [], 
       error: 'Server error', 
+      success: null, 
       editCategory: null, 
       validationErrors: [], 
       user
@@ -431,17 +617,17 @@ app.get('/manage/edit/:id', isAuthenticated, hasPermission('manage'), async (req
 app.post('/manage/edit/:id', isAuthenticated, hasPermission('manage'), async (req, res) => {
   const user = req.session.admin;
   const { id } = req.params;
-  const { name, total_spaces, pricing_type, price } = req.body;
-  console.log('POST /manage/edit/:id:', { id, name, total_spaces, pricing_type, price });
+  const { name, spaces_per_vehicle, pricing_type, price } = req.body;
+  console.log('POST /manage/edit/:id:', { id, name, spaces_per_vehicle, pricing_type, price });
 
   const validationErrors = [];
   const nameError = validateCategoryName(name);
-  const spacesError = validateTotalSpaces(total_spaces);
+  const spacesPerVehicleError = validateSpacesPerVehicle(spaces_per_vehicle);
   const pricingError = validatePricingType(pricing_type);
   const priceError = validatePrice(price);
 
   if (nameError) validationErrors.push(nameError);
-  if (spacesError) validationErrors.push(spacesError);
+  if (spacesPerVehicleError) validationErrors.push(spacesPerVehicleError);
   if (pricingError) validationErrors.push(pricingError);
   if (priceError) validationErrors.push(priceError);
 
@@ -449,12 +635,14 @@ app.post('/manage/edit/:id', isAuthenticated, hasPermission('manage'), async (re
     const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     const formattedCategories = categories.map(category => ({
       ...category,
-      price: Number(category.price) || 0
+      price: Number(category.price) || 0,
+      spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
     }));
     return res.render('manage', { 
       categories: formattedCategories, 
       error: null, 
-      editCategory: { id, name, total_spaces, pricing_type, price: Number(price) || 0 }, 
+      success: null, 
+      editCategory: { id, name, spaces_per_vehicle, pricing_type, price: Number(price) || 0 }, 
       validationErrors,
       user
     });
@@ -462,22 +650,37 @@ app.post('/manage/edit/:id', isAuthenticated, hasPermission('manage'), async (re
 
   try {
     await db.pool.query(
-      'UPDATE vehicle_categories SET name = ?, total_spaces = ?, pricing_type = ?, price = ? WHERE id = ?',
-      [name, total_spaces, pricing_type, price, id]
+      'UPDATE vehicle_categories SET name = ?, spaces_per_vehicle = ?, pricing_type = ?, price = ? WHERE id = ?',
+      [name, spaces_per_vehicle, pricing_type, price, id]
     );
-    res.redirect('/manage');
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const formattedCategories = categories.map(category => ({
+      ...category,
+      price: Number(category.price) || 0,
+      spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
+    }));
+    res.render('manage', { 
+      categories: formattedCategories, 
+      error: null, 
+      success: 'Category updated successfully', 
+      editCategory: null, 
+      validationErrors: [], 
+      user
+    });
   } catch (err) {
     console.error('Edit category update error:', err);
     fs.writeFileSync('server.log', `Edit category update error: ${err}\n`, { flag: 'a' });
     const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     const formattedCategories = categories.map(category => ({
       ...category,
-      price: Number(category.price) || 0
+      price: Number(category.price) || 0,
+      spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
     }));
     res.render('manage', { 
       categories: formattedCategories, 
-      error: 'Failed to update category', 
-      editCategory: { id, name, total_spaces, pricing_type, price: Number(price) || 0 },
+      error: 'Failed to update category: ' + err.message, 
+      success: null, 
+      editCategory: { id, name, spaces_per_vehicle, pricing_type, price: Number(price) || 0 },
       validationErrors: [],
       user
     });
@@ -489,35 +692,78 @@ app.post('/manage/delete/:id', isAuthenticated, hasPermission('manage'), async (
   const { id } = req.params;
   console.log('POST /manage/delete/:id:', { id });
   try {
-    const [entries] = await db.pool.query('SELECT * FROM entries WHERE category_id = ?', [id]);
+    const [entries] = await db.pool.query(
+      'SELECT * FROM entries WHERE category_id = ? AND CAST(id AS SIGNED) NOT IN (SELECT CAST(entry_id AS SIGNED) FROM exits WHERE entry_id IS NOT NULL)',
+      [id]
+    );
+    console.log('Entries blocking deletion:', entries);
     if (entries.length > 0) {
       const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
       const formattedCategories = categories.map(category => ({
         ...category,
-        price: Number(category.price) || 0
+        price: Number(category.price) || 0,
+        spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
       }));
       return res.render('manage', { 
         categories: formattedCategories, 
-        error: 'Cannot delete category: it is in use by existing entries', 
+        error: 'Cannot delete category: it is in use by existing entries that have not exited', 
+        success: null, 
         editCategory: null, 
         validationErrors: [], 
         user
       });
     }
 
-    await db.pool.query('DELETE FROM vehicle_categories WHERE id = ?', [id]);
-    res.redirect('/manage');
-  } catch (err) {
-    console.error('Delete category error:', err);
-    fs.writeFileSync('server.log', `Delete category error: ${err}\n`, { flag: 'a' });
+    try {
+      await db.pool.query('ALTER TABLE entries DROP FOREIGN KEY entries_ibfk_1');
+      console.log('Dropped foreign key constraint entries_ibfk_1');
+    } catch (err) {
+      console.warn('Foreign key constraint entries_ibfk_1 may not exist:', err.message);
+    }
+
+    try {
+      await db.pool.query('ALTER TABLE exits DROP FOREIGN KEY exits_ibfk_1');
+      console.log('Dropped foreign key constraint exits_ibfk_1');
+    } catch (err) {
+      console.warn('Foreign key constraint exits_ibfk_1 may not exist:', err.message);
+    }
+
+    const [deleteEntriesResult] = await db.pool.query(
+      'DELETE FROM entries WHERE category_id = ?',
+      [id]
+    );
+    console.log('Deleted entries for category:', { category_id: id, affectedRows: deleteEntriesResult.affectedRows });
+
+    const [deleteCategoryResult] = await db.pool.query('DELETE FROM vehicle_categories WHERE id = ?', [id]);
+    console.log('Deleted category:', { category_id: id, affectedRows: deleteCategoryResult.affectedRows });
+
     const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
     const formattedCategories = categories.map(category => ({
       ...category,
-      price: Number(category.price) || 0
+      price: Number(category.price) || 0,
+      spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
     }));
     res.render('manage', { 
       categories: formattedCategories, 
-      error: 'Failed to delete category', 
+      error: null, 
+      success: 'Category deleted successfully', 
+      editCategory: null, 
+      validationErrors: [], 
+      user
+    });
+  } catch (err) {
+    console.error('Delete category error:', err.message, err.stack);
+    fs.writeFileSync('server.log', `Delete category error: ${err.message}\n${err.stack}\n`, { flag: 'a' });
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const formattedCategories = categories.map(category => ({
+      ...category,
+      price: Number(category.price) || 0,
+      spaces_per_vehicle: Number(category.spaces_per_vehicle) || 1
+    }));
+    res.render('manage', { 
+      categories: formattedCategories, 
+      error: 'Failed to delete category: ' + err.message, 
+      success: null, 
       editCategory: null, 
       validationErrors: [], 
       user
@@ -525,15 +771,99 @@ app.post('/manage/delete/:id', isAuthenticated, hasPermission('manage'), async (
   }
 });
 
+// Profile Routes
+app.get('/profile', isAuthenticated, async (req, res) => {
+  console.log('GET /profile');
+  try {
+    const user = req.session.admin;
+    res.render('profile', { admin: user, error: null, success: null, validationErrors: [], user });
+  } catch (err) {
+    console.error('Profile error:', err);
+    fs.writeFileSync('server.log', `Profile error: ${err}\n`, { flag: 'a' });
+    res.render('profile', { admin: user, error: 'Server error: ' + err.message, success: null, validationErrors: [], user });
+  }
+});
+
+app.post('/profile', isAuthenticated, async (req, res) => {
+  const user = req.session.admin;
+  const { username, email, password } = req.body;
+  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
+
+  const validationErrors = [];
+  const usernameError = validateUsername(username);
+  const emailError = validateEmail(email);
+  let passwordError = null;
+  if (password) {
+    passwordError = validatePassword(password);
+  }
+
+  if (usernameError) validationErrors.push(usernameError);
+  if (emailError) validationErrors.push(emailError);
+  if (passwordError) validationErrors.push(passwordError);
+
+  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
+  if (duplicateUsername.length > 0) {
+    validationErrors.push('Username already exists');
+  }
+  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
+  if (duplicateEmail.length > 0) {
+    validationErrors.push('Email already exists');
+  }
+
+  if (validationErrors.length > 0) {
+    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
+  }
+
+  try {
+    let hashedPassword = user.password;
+    let plaintextPassword = user.plaintext_password;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+      plaintextPassword = password;
+    }
+
+    await db.pool.query(
+      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
+      [username, email, hashedPassword, plaintextPassword, user.id]
+    );
+
+    req.session.admin = {
+      ...req.session.admin,
+      username,
+      email,
+      password: hashedPassword,
+      plaintext_password: plaintextPassword
+    };
+
+    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
+  } catch (err) {
+    console.error('Update profile error:', err);
+    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
+    res.render('profile', { admin: user, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user });
+  }
+});
+
+// Entry Routes
 app.get('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => {
   console.log('GET /entry');
   try {
     const user = req.session.admin;
     const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
-    console.log('Entry categories:', categories);
+    const [lot] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
+    const formattedLot = lot.length > 0 ? {
+      total_spaces: Number(lot[0].total_spaces) || 0,
+      used_spaces: Number(lot[0].used_spaces) || 0
+    } : { total_spaces: 0, used_spaces: 0 };
+    const formattedCategories = categories.map(category => ({
+      ...category,
+      available_spaces: formattedLot.total_spaces - formattedLot.used_spaces
+    }));
+    console.log('Entry categories:', formattedCategories, 'Lot:', formattedLot);
     res.render('entry', { 
-      categories, 
+      categories: formattedCategories, 
+      lot: formattedLot, 
       error: null, 
+      success: null,
       autofill: {}, 
       validationErrors: [], 
       user
@@ -543,7 +873,9 @@ app.get('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => {
     fs.writeFileSync('server.log', `Entry error: ${err}\n`, { flag: 'a' });
     res.render('entry', { 
       categories: [], 
+      lot: { total_spaces: 0, used_spaces: 0 }, 
       error: 'Server error', 
+      success: null,
       autofill: {}, 
       validationErrors: [], 
       user: req.session.admin
@@ -562,9 +894,20 @@ app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => 
   const phoneError = validatePhone(phone);
 
   let categoryError = null;
-  const [categoryCheck] = await db.pool.query('SELECT id FROM vehicle_categories WHERE id = ?', [category_id]);
+  const [categoryCheck] = await db.pool.query('SELECT id, spaces_per_vehicle FROM vehicle_categories WHERE id = ?', [category_id]);
+  const [lot] = await db.pool.query('SELECT total_spaces, used_spaces FROM parking_lot WHERE id = 1');
   if (categoryCheck.length === 0) {
     categoryError = 'Selected category does not exist';
+  } else if (lot.length === 0) {
+    categoryError = 'Parking lot configuration not found';
+  } else {
+    const spacesPerVehicle = Number(categoryCheck[0].spaces_per_vehicle) || 1;
+    const totalSpaces = Number(lot[0].total_spaces) || 0;
+    const usedSpaces = Number(lot[0].used_spaces) || 0;
+    const availableSpaces = totalSpaces - usedSpaces;
+    if (availableSpaces < spacesPerVehicle) {
+      categoryError = `Not enough spaces available in the lot. Required: ${spacesPerVehicle}, Available: ${availableSpaces}`;
+    }
   }
 
   if (plateError) validationErrors.push(plateError);
@@ -574,9 +917,20 @@ app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => 
 
   if (validationErrors.length > 0) {
     const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const [lotData] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
+    const formattedLot = lotData.length > 0 ? {
+      total_spaces: Number(lotData[0].total_spaces) || 0,
+      used_spaces: Number(lotData[0].used_spaces) || 0
+    } : { total_spaces: 0, used_spaces: 0 };
+    const formattedCategories = categories.map(category => ({
+      ...category,
+      available_spaces: formattedLot.total_spaces - formattedLot.used_spaces
+    }));
     return res.render('entry', { 
-      categories, 
+      categories: formattedCategories, 
+      lot: formattedLot, 
       error: null, 
+      success: null,
       autofill: { number_plate, owner_name, phone, category_id }, 
       validationErrors,
       user
@@ -596,19 +950,48 @@ app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => 
     };
     console.log('Autofill data:', autofill);
 
-    await db.pool.query(
-      'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
-      [number_plate, owner_name || null, phone || null, category_id]
-    );
+    const connection = await db.pool.getConnection();
+    try {
+      await connection.beginTransaction();
 
-    res.redirect('/dashboard');
+      const [entryResult] = await connection.query(
+        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
+        [number_plate, owner_name || null, phone || null, category_id]
+      );
+
+      const spacesPerVehicle = Number(categoryCheck[0].spaces_per_vehicle) || 1;
+      await connection.query(
+        'UPDATE parking_lot SET used_spaces = used_spaces + ? WHERE id = 1',
+        [spacesPerVehicle]
+      );
+
+      await connection.commit();
+      connection.release();
+
+      res.redirect('/dashboard');
+    } catch (err) {
+      await connection.rollback();
+      connection.release();
+      throw err;
+    }
   } catch (err) {
     console.error('Add entry error:', err);
     fs.writeFileSync('server.log', `Add entry error: ${err}\n`, { flag: 'a' });
     const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const [lotData] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
+    const formattedLot = lotData.length > 0 ? {
+      total_spaces: Number(lotData[0].total_spaces) || 0,
+      used_spaces: Number(lotData[0].used_spaces) || 0
+    } : { total_spaces: 0, used_spaces: 0 };
+    const formattedCategories = categories.map(category => ({
+      ...category,
+      available_spaces: formattedLot.total_spaces - formattedLot.used_spaces
+    }));
     res.render('entry', { 
-      categories, 
-      error: 'Failed to add entry', 
+      categories: formattedCategories, 
+      lot: formattedLot, 
+      error: 'Failed to add entry: ' + err.message, 
+      success: null,
       autofill: { number_plate, owner_name, phone, category_id }, 
       validationErrors: [],
       user
@@ -616,21 +999,21 @@ app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => 
   }
 });
 
+// Exit Routes
 app.get('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
   console.log('GET /exit');
   try {
     const user = req.session.admin;
     const [entries] = await db.pool.query(
-      'SELECT e.id, e.number_plate, e.entry_time, e.owner_name, e.phone, vc.name as category, vc.pricing_type, vc.price ' +
-      'FROM entries e LEFT JOIN vehicle_categories vc ON e.category_id = vc.id ' +
-      'WHERE e.id NOT IN (SELECT entry_id FROM exits)'
+      'SELECT e.id, e.number_plate, e.entry_time, e.owner_name, e.phone, e.category_id, vc.name as category, vc.pricing_type, vc.price, vc.spaces_per_vehicle ' +
+      'FROM entries e LEFT JOIN vehicle_categories vc ON e.category_id = vc.id'
     );
     console.log('Exit entries:', entries);
-    res.render('exit', { entries: entries || [], error: null, user });
+    res.render('exit', { entries: entries || [], error: null, success: null, user });
   } catch (err) {
     console.error('Exit error:', err);
     fs.writeFileSync('server.log', `Exit error: ${err}\n`, { flag: 'a' });
-    res.render('exit', { entries: [], error: 'Server error', user: req.session.admin });
+    res.render('exit', { entries: [], error: 'Server error', success: null, user: req.session.admin });
   }
 });
 
@@ -641,7 +1024,7 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
 
   try {
     const [parkedBefore] = await db.pool.query(
-      `SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)`
+      `SELECT COUNT(*) as count FROM entries`
     );
     const [earningsBefore] = await db.pool.query(
       `SELECT COALESCE(SUM(x.cost), 0) as total FROM exits x WHERE DATE(x.exit_time) = CURDATE()`
@@ -649,13 +1032,14 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
     console.log('Dashboard stats before exit:', { parked: parkedBefore[0].count, earnings: earningsBefore[0].total });
 
     const [entry] = await db.pool.query(
-      'SELECT e.entry_time, e.number_plate, vc.pricing_type, vc.price ' +
+      'SELECT e.entry_time, e.number_plate, e.category_id, vc.pricing_type, vc.price, vc.spaces_per_vehicle ' +
       'FROM entries e JOIN vehicle_categories vc ON e.category_id = vc.id ' +
       'WHERE e.id = ?',
       [entry_id]
     );
     console.log('Exit entry:', entry);
     if (entry.length === 0) {
+      console.log('Entry not found for exit:', { entry_id });
       return res.status(404).send('Entry not found');
     }
 
@@ -670,17 +1054,52 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
     }
     console.log('Calculated cost:', cost);
 
-    const [result] = await db.pool.query(
-      'INSERT INTO exits (entry_id, exit_time, cost) VALUES (?, NOW(), ?)',
-      [entry_id, cost]
-    );
-    console.log('Exit record inserted:', { entry_id, cost, insertId: result.insertId });
+    const connection = await db.pool.getConnection();
+    let transactionSuccess = false;
+    try {
+      await connection.beginTransaction();
+
+      const [result] = await connection.query(
+        'INSERT INTO exits (entry_id, exit_time, cost) VALUES (?, NOW(), ?)',
+        [entry_id, cost]
+      );
+      console.log('Exit record inserted:', { entry_id, cost, insertId: result.insertId });
+
+      const [deleteResult] = await connection.query(
+        'DELETE FROM entries WHERE id = ?',
+        [entry_id]
+      );
+      console.log('Entry deletion result:', { entry_id, affectedRows: deleteResult.affectedRows });
+
+      const spacesPerVehicle = Number(entry[0].spaces_per_vehicle) || 1;
+      const [updateResult] = await connection.query(
+        'UPDATE parking_lot SET used_spaces = GREATEST(used_spaces - ?, 0) WHERE id = 1',
+        [spacesPerVehicle]
+      );
+      console.log('Updated parking_lot used_spaces:', { affectedRows: updateResult.affectedRows, spacesPerVehicle });
+
+      await connection.commit();
+      transactionSuccess = true;
+      console.log('Transaction committed successfully for entry_id:', entry_id);
+    } catch (transactionErr) {
+      console.error('Transaction error for entry_id:', { entry_id, error: transactionErr.message, stack: transactionErr.stack });
+      await connection.rollback();
+      console.log('Transaction rolled back for entry_id:', entry_id);
+      throw transactionErr;
+    } finally {
+      connection.release();
+      console.log('Database connection released for entry_id:', entry_id);
+    }
+
+    if (!transactionSuccess) {
+      throw new Error('Transaction failed to complete for entry_id: ' + entry_id);
+    }
 
     const [newExit] = await db.pool.query('SELECT * FROM exits WHERE entry_id = ?', [entry_id]);
     console.log('New exit record:', newExit);
 
     const [parkedAfter] = await db.pool.query(
-      `SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)`
+      `SELECT COUNT(*) as count FROM entries`
     );
     const [earningsAfter] = await db.pool.query(
       `SELECT COALESCE(SUM(x.cost), 0) as total FROM exits x WHERE DATE(x.exit_time) = CURDATE()`
@@ -695,7 +1114,6 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
       await webPush.sendNotification(req.session.subscription, payload);
     }
 
-    // Force hard refresh with meta tag and JavaScript
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -706,10 +1124,8 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
         <meta http-equiv="pragma" content="no-cache">
         <meta http-equiv="expires" content="0">
         <script>
-          // Clear local storage and session storage
           localStorage.clear();
           sessionStorage.clear();
-          // Force hard navigation
           window.location.href = '/dashboard?hardrefresh=${Date.now()}';
           window.location.reload(true);
         </script>
@@ -720,16 +1136,21 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
       </html>
     `);
   } catch (err) {
-    console.error('Process exit error:', err);
-    fs.writeFileSync('server.log', `Process exit error: ${err}\n`, { flag: 'a' });
-    res.render('exit', { entries: [], error: 'Failed to process exit: ' + err.message, user });
+    console.error('Process exit error:', err.message, err.stack);
+    fs.writeFileSync('server.log', `Process exit error: ${err.message}\n${err.stack}\n`, { flag: 'a' });
+    const [entries] = await db.pool.query(
+      'SELECT e.id, e.number_plate, e.entry_time, e.owner_name, e.phone, e.category_id, vc.name as category, vc.pricing_type, vc.price, vc.spaces_per_vehicle ' +
+      'FROM entries e LEFT JOIN vehicle_categories vc ON e.category_id = vc.id'
+    );
+    res.render('exit', { entries: entries || [], error: 'Failed to process exit: ' + err.message, success: null, user });
   }
 });
 
+// Add Admin Routes
 app.get('/add-admin', isAuthenticated, hasPermission('add_admin'), (req, res) => {
   console.log('GET /add-admin');
   const user = req.session.admin;
-  res.render('add-admin', { error: null, validationErrors: [], user });
+  res.render('add-admin', { error: null, success: null, validationErrors: [], user });
 });
 
 app.post('/add-admin', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
@@ -747,19 +1168,19 @@ app.post('/add-admin', isAuthenticated, hasPermission('add_admin'), async (req, 
   if (emailError) validationErrors.push(emailError);
 
   if (validationErrors.length > 0) {
-    return res.render('add-admin', { error: null, validationErrors, user });
+    return res.render('add-admin', { error: null, success: null, validationErrors, user });
   }
 
   try {
     if (!username || !password || !email) {
       console.log('Missing fields');
-      return res.render('add-admin', { error: 'All fields are required', validationErrors: [], user });
+      return res.render('add-admin', { error: 'All fields are required', success: null, validationErrors: [], user });
     }
 
     const [existing] = await db.pool.query('SELECT * FROM admins WHERE username = ?', [username]);
     if (existing.length > 0) {
       console.log('Username exists:', username);
-      return res.render('add-admin', { error: 'Username already exists', validationErrors: [], user });
+      return res.render('add-admin', { error: 'Username already exists', success: null, validationErrors: [], user });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -770,67 +1191,153 @@ app.post('/add-admin', isAuthenticated, hasPermission('add_admin'), async (req, 
       add_admin: false
     };
     await db.pool.query(
-      'INSERT INTO admins (username, password, email, permissions) VALUES (?, ?, ?, ?)',
-      [username, hashedPassword, email, JSON.stringify(permissions)]
+      'INSERT INTO admins (username, password, plaintext_password, email, permissions) VALUES (?, ?, ?, ?, ?)',
+      [username, hashedPassword, password, email, JSON.stringify(permissions)]
     );
-    console.log('Admin added:', username);
+    console.log('Admin added:', { username, plaintext_password: password });
 
     res.redirect('/dashboard');
   } catch (err) {
     console.error('Add admin error:', err);
     fs.writeFileSync('server.log', `Add admin error: ${err}\n`, { flag: 'a' });
-    res.render('add-admin', { error: 'Failed to add admin', validationErrors: [], user });
+    res.render('add-admin', { error: 'Failed to add admin', success: null, validationErrors: [], user });
   }
 });
 
-// Manage Admins - List all admins (Super Admin only)
+// Manage Admins Routes
 app.get('/manage-admins', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
   console.log('GET /manage-admins');
   try {
     const user = req.session.admin;
+    const filter = req.query.filter || 'weekly';
     const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
     console.log('Admins list:', admins);
-    res.render('manage-admins', { admins, error: null, user });
+    res.render('manage-admins', { admins, error: null, success: null, filter, user });
   } catch (err) {
     console.error('Manage admins error:', err);
     fs.writeFileSync('server.log', `Manage admins error: ${err}\n`, { flag: 'a' });
-    res.render('manage-admins', { admins: [], error: 'Server error: ' + err.message, user });
+    res.render('manage-admins', { admins: [], error: 'Server error: ' + err.message, success: null, filter: 'weekly', user: req.session.admin });
   }
 });
 
-// Manage Admins - Edit an admin's permissions (Super Admin only)
+app.get('/manage-admins/confirm-delete/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
+  console.log('GET /manage-admins/confirm-delete/:id');
+  const user = req.session.admin;
+  const { id } = req.params;
+  const filter = req.query.filter || 'weekly';
+  try {
+    const [admins] = await db.pool.query('SELECT id, username, email FROM admins WHERE id = ? AND username != ?', [id, user.username]);
+    console.log('Fetched admin for deletion confirmation:', admins);
+    if (admins.length === 0) {
+      console.log('Admin not found for ID:', id);
+      const [allAdmins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
+      return res.render('manage-admins', { admins: allAdmins, error: 'Admin not found or cannot delete yourself', success: null, filter, user });
+    }
+    const adminToDelete = admins[0];
+    res.render('confirm-delete-admin', { admin: adminToDelete, error: null, success: null, filter, user });
+  } catch (err) {
+    console.error('Confirm delete admin error:', err);
+    fs.writeFileSync('server.log', `Confirm delete admin error: ${err}\n`, { flag: 'a' });
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
+    res.render('manage-admins', { admins, error: 'Server error: ' + err.message, success: null, filter, user });
+  }
+});
+
+app.post('/manage-admins/delete/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
+  console.log('POST /manage-admins/delete/:id');
+  const user = req.session.admin;
+  const { id } = req.params;
+  const filter = req.body.filter || 'weekly';
+  try {
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE id = ? AND username != ?', [id, user.username]);
+    if (admins.length === 0) {
+      const [allAdmins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
+      return res.render('manage-admins', { admins: allAdmins, error: 'Admin not found or cannot delete yourself', success: null, filter, user });
+    }
+
+    await db.pool.query('DELETE FROM admins WHERE id = ?', [id]);
+    console.log('Admin deleted:', { id });
+
+    const [updatedAdmins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
+    res.render('manage-admins', { admins: updatedAdmins, error: null, success: 'Admin deleted successfully', filter, user });
+  } catch (err) {
+    console.error('Delete admin error:', err);
+    fs.writeFileSync('server.log', `Delete admin error: ${err}\n`, { flag: 'a' });
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
+    res.render('manage-admins', { admins, error: 'Failed to delete admin: ' + err.message, success: null, filter, user });
+  }
+});
+
 app.get('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
   console.log('GET /manage-admins/edit/:id');
   const user = req.session.admin;
   const { id } = req.params;
   try {
-    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE id = ? AND username != ?', [id, user.username]);
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions, password, plaintext_password FROM admins WHERE id = ? AND username != ?', [id, user.username]);
+    console.log('Fetched admin:', admins);
     if (admins.length === 0) {
-      return res.render('manage-admins', { admins: [], error: 'Admin not found', user });
+      console.log('Admin not found for ID:', id);
+      return res.render('manage-admins', { admins: [], error: 'Admin not found', success: null, filter: 'weekly', user });
     }
     const adminToEdit = admins[0];
     if (typeof adminToEdit.permissions === 'string') {
       adminToEdit.permissions = JSON.parse(adminToEdit.permissions);
     }
-    console.log('Editing admin:', adminToEdit);
-    res.render('edit-admin', { admin: adminToEdit, error: null, validationErrors: [], user });
+    console.log('Rendering edit-admin with details:', {
+      id: adminToEdit.id,
+      username: adminToEdit.username,
+      email: adminToEdit.email,
+      plaintext_password: adminToEdit.plaintext_password,
+      permissions: adminToEdit.permissions
+    });
+    res.render('edit-admin', { admin: adminToEdit, error: null, success: null, validationErrors: [], user });
   } catch (err) {
     console.error('Edit admin fetch error:', err);
     fs.writeFileSync('server.log', `Edit admin fetch error: ${err}\n`, { flag: 'a' });
-    res.render('edit-admin', { admin: null, error: 'Server error: ' + err.message, validationErrors: [], user });
+    res.render('edit-admin', { admin: null, error: 'Server error: ' + err.message, success: null, validationErrors: [], user });
   }
 });
 
 app.post('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
   const user = req.session.admin;
   const { id } = req.params;
-  const { can_entry, can_exit, can_manage } = req.body;
-  console.log('POST /manage-admins/edit/:id:', { id, can_entry, can_exit, can_manage });
+  const { username, email, password, can_entry, can_exit, can_manage } = req.body;
+  console.log('POST /manage-admins/edit/:id:', { id, username, email, password, can_entry, can_exit, can_manage });
 
   try {
-    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE id = ? AND username != ?', [id, user.username]);
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions, password, plaintext_password FROM admins WHERE id = ? AND username != ?', [id, user.username]);
     if (admins.length === 0) {
-      return res.render('edit-admin', { admin: null, error: 'Admin not found', validationErrors: [], user });
+      return res.render('edit-admin', { admin: null, error: 'Admin not found', success: null, validationErrors: [], user });
+    }
+
+    const validationErrors = [];
+    const usernameError = validateUsername(username);
+    const emailError = validateEmail(email);
+    const passwordError = validatePassword(password);
+
+    if (usernameError) validationErrors.push(usernameError);
+    if (emailError) validationErrors.push(emailError);
+    if (passwordError) validationErrors.push(passwordError);
+
+    const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, id]);
+    if (duplicateUsername.length > 0) {
+      validationErrors.push('Username already exists');
+    }
+    const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, id]);
+    if (duplicateEmail.length > 0) {
+      validationErrors.push('Email already exists');
+    }
+
+    if (validationErrors.length > 0) {
+      const adminToEdit = { 
+        id, 
+        username, 
+        email, 
+        password,
+        plaintext_password: password,
+        permissions: { entry: can_entry === 'on', exit: can_exit === 'on', manage: can_manage === 'on', add_admin: false }
+      };
+      return res.render('edit-admin', { admin: adminToEdit, error: null, success: null, validationErrors, user });
     }
 
     const permissions = {
@@ -839,22 +1346,32 @@ app.post('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'),
       manage: can_manage === 'on',
       add_admin: false
     };
-    await db.pool.query(
-      'UPDATE admins SET permissions = ? WHERE id = ?',
-      [JSON.stringify(permissions), id]
-    );
-    console.log('Admin permissions updated:', { id, permissions });
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+    console.log('Saving hashed password:', hashedPassword);
+    await db.pool.query(
+      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = NULL, permissions = ? WHERE id = ?',
+      [username, email, hashedPassword, JSON.stringify(permissions), id]
+    );
+    console.log('Admin details updated:', { id, username, email, permissions });
+    console.log('Redirecting to /manage-admins');
     res.redirect('/manage-admins');
   } catch (err) {
     console.error('Edit admin update error:', err);
     fs.writeFileSync('server.log', `Edit admin update error: ${err}\n`, { flag: 'a' });
-    const adminToEdit = { id, permissions: { entry: can_entry === 'on', exit: can_exit === 'on', manage: can_manage === 'on', add_admin: false } };
-    res.render('edit-admin', { admin: adminToEdit, error: 'Failed to update admin: ' + err.message, validationErrors: [], user });
+    const adminToEdit = { 
+      id, 
+      username, 
+      email, 
+      password,
+      plaintext_password: password,
+      permissions: { entry: can_entry === 'on', exit: can_exit === 'on', manage: can_manage === 'on', add_admin: false }
+    };
+    res.render('edit-admin', { admin: adminToEdit, error: 'Failed to update admin: ' + err.message, success: null, validationErrors: [], user });
   }
 });
 
-// Reports - Generate system usage reports (Super Admin only)
+// Reports Route
 app.get('/reports', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
   console.log('GET /reports');
   try {
@@ -911,6 +1428,7 @@ app.get('/reports', isAuthenticated, hasPermission('add_admin'), async (req, res
       adminActivity,
       filter,
       error: null,
+      success: null,
       user
     });
   } catch (err) {
@@ -923,33 +1441,32 @@ app.get('/reports', isAuthenticated, hasPermission('add_admin'), async (req, res
       adminActivity: [],
       filter: 'today',
       error: 'Server error: ' + err.message,
+      success: null,
       user: req.session.admin
     });
   }
 });
 
-// Public route to view parking availability
+// Public Routes
 app.get('/public', async (req, res) => {
   console.log('GET /public');
   try {
     const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
-    const [parked] = await db.pool.query(
-      'SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)'
-    );
-    const [totalSpaces] = await db.pool.query(
-      'SELECT SUM(total_spaces) as total FROM vehicle_categories'
-    );
-    const available = totalSpaces[0].total ? totalSpaces[0].total - parked[0].count : 0;
-    const lotDetails = { categories, available, totalSpaces: totalSpaces[0].total || 0 };
-    res.render('public-parking', { lots: [lotDetails], error: null, validationErrors: [], autofill: {} });
+    const [lot] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
+    const formattedLot = lot.length > 0 ? {
+      total_spaces: Number(lot[0].total_spaces) || 0,
+      used_spaces: Number(lot[0].used_spaces) || 0
+    } : { total_spaces: 0, used_spaces: 0 };
+    const available = formattedLot.total_spaces - formattedLot.used_spaces;
+    const lotDetails = { categories, available, totalSpaces: formattedLot.total_spaces };
+    res.render('public-parking', { lots: [lotDetails], error: null, success: null, validationErrors: [], autofill: {}, user: null });
   } catch (err) {
     console.error('Public page error:', err);
     fs.writeFileSync('server.log', `Public page error: ${err}\n`, { flag: 'a' });
-    res.render('public-parking', { lots: [], error: 'Server error', validationErrors: [], autofill: {} });
+    res.render('public-parking', { lots: [], error: 'Server error', success: null, validationErrors: [], autofill: {}, user: null });
   }
 });
 
-// Public route to park a vehicle and get a ticket
 app.post('/public/park', async (req, res) => {
   const { number_plate, owner_name, phone, category_id } = req.body;
   console.log('POST /public/park:', { number_plate, owner_name, phone, category_id });
@@ -960,9 +1477,20 @@ app.post('/public/park', async (req, res) => {
   const phoneError = validatePhone(phone);
 
   let categoryError = null;
-  const [categoryCheck] = await db.pool.query('SELECT id FROM vehicle_categories WHERE id = ?', [category_id]);
+  const [categoryCheck] = await db.pool.query('SELECT id, spaces_per_vehicle FROM vehicle_categories WHERE id = ?', [category_id]);
+  const [lot] = await db.pool.query('SELECT total_spaces, used_spaces FROM parking_lot WHERE id = 1');
   if (categoryCheck.length === 0) {
     categoryError = 'Selected category does not exist';
+  } else if (lot.length === 0) {
+    categoryError = 'Parking lot configuration not found';
+  } else {
+    const spacesPerVehicle = Number(categoryCheck[0].spaces_per_vehicle) || 1;
+    const totalSpaces = Number(lot[0].total_spaces) || 0;
+    const usedSpaces = Number(lot[0].used_spaces) || 0;
+    const availableSpaces = totalSpaces - usedSpaces;
+    if (availableSpaces < spacesPerVehicle) {
+      categoryError = `Not enough spaces available in the lot. Required: ${spacesPerVehicle}, Available: ${availableSpaces}`;
+    }
   }
 
   if (plateError) validationErrors.push(plateError);
@@ -972,103 +1500,124 @@ app.post('/public/park', async (req, res) => {
 
   if (validationErrors.length > 0) {
     const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
-    const [parked] = await db.pool.query(
-      'SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)'
-    );
-    const [totalSpaces] = await db.pool.query(
-      'SELECT SUM(total_spaces) as total FROM vehicle_categories'
-    );
-    const available = totalSpaces[0].total ? totalSpaces[0].total - parked[0].count : 0;
-    const lotDetails = { categories, available, totalSpaces: totalSpaces[0].total || 0 };
+    const [lotData] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
+    const formattedLot = lotData.length > 0 ? {
+      total_spaces: Number(lotData[0].total_spaces) || 0,
+      used_spaces: Number(lotData[0].used_spaces) || 0
+    } : { total_spaces: 0, used_spaces: 0 };
+    const available = formattedLot.total_spaces - formattedLot.used_spaces;
+    const lotDetails = { categories, available, totalSpaces: formattedLot.total_spaces };
     return res.render('public-parking', { 
       lots: [lotDetails], 
       error: null, 
+      success: null,
       validationErrors,
-      autofill: { number_plate, owner_name, phone, category_id }
+      autofill: { number_plate, owner_name, phone, category_id },
+      user: null
     });
   }
 
   try {
-    const [entryResult] = await db.pool.query(
-      'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
-      [number_plate, owner_name || null, phone || null, category_id]
-    );
-    const entryId = entryResult.insertId;
+    const connection = await db.pool.getConnection();
+    try {
+      await connection.beginTransaction();
 
-    if (req.session.subscription) {
-      const payload = JSON.stringify({
-        title: 'Vehicle Parked',
-        body: `Your vehicle ${number_plate} has been parked.`
-      });
-      await webPush.sendNotification(req.session.subscription, payload);
+      const [entryResult] = await connection.query(
+        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
+        [number_plate, owner_name || null, phone || null, category_id]
+      );
+      const entryId = entryResult.insertId;
+
+      const spacesPerVehicle = Number(categoryCheck[0].spaces_per_vehicle) || 1;
+      await connection.query(
+        'UPDATE parking_lot SET used_spaces = used_spaces + ? WHERE id = 1',
+        [spacesPerVehicle]
+      );
+
+      await connection.commit();
+      connection.release();
+
+      if (req.session.subscription) {
+        const payload = JSON.stringify({
+          title: 'Vehicle Parked',
+          body: `Your vehicle ${number_plate} has been parked.`
+        });
+        await webPush.sendNotification(req.session.subscription, payload);
+      }
+
+      const ticketContent = `
+        <div style="text-align: center; font-family: Arial, sans-serif; padding: 20px;">
+          <h2>Parking System</h2>
+          <h4>Entry Ticket</h4>
+          <p><strong>Vehicle Number:</strong> ${number_plate}</p>
+          <p><strong>Entry Time:</strong> ${new Date().toLocaleString()}</p>
+        </div>
+      `;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="entry_ticket_${number_plate}_${Date.now()}.pdf"`);
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+        </head>
+        <body>
+          <div id="ticket">${ticketContent}</div>
+          <script>
+            const element = document.getElementById('ticket');
+            html2pdf().from(element).save('entry_ticket_${number_plate}_${Date.now()}.pdf');
+            setTimeout(() => { window.location.href = '/public'; }, 1000);
+          </script>
+        </body>
+        </html>
+      `);
+    } catch (err) {
+      await connection.rollback();
+      connection.release();
+      throw err;
     }
-
-    const ticketContent = `
-      <div style="text-align: center; font-family: Arial, sans-serif; padding: 20px;">
-        <h2>Parking System</h2>
-        <h4>Entry Ticket</h4>
-        <p><strong>Vehicle Number:</strong> ${number_plate}</p>
-        <p><strong>Entry Time:</strong> ${new Date().toLocaleString()}</p>
-      </div>
-    `;
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="entry_ticket_${number_plate}_${Date.now()}.pdf"`);
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-      </head>
-      <body>
-        <div id="ticket">${ticketContent}</div>
-        <script>
-          const element = document.getElementById('ticket');
-          html2pdf().from(element).save('entry_ticket_${number_plate}_${Date.now()}.pdf');
-          setTimeout(() => { window.location.href = '/public'; }, 1000);
-        </script>
-      </body>
-      </html>
-    `);
   } catch (err) {
     console.error('Public park error:', err);
     fs.writeFileSync('server.log', `Public park error: ${err}\n`, { flag: 'a' });
     const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
-    const [parked] = await db.pool.query(
-      'SELECT COUNT(*) as count FROM entries WHERE id NOT IN (SELECT entry_id FROM exits)'
-    );
-    const [totalSpaces] = await db.pool.query(
-      'SELECT SUM(total_spaces) as total FROM vehicle_categories'
-    );
-    const available = totalSpaces[0].total ? totalSpaces[0].total - parked[0].count : 0;
-    const lotDetails = { categories, available, totalSpaces: totalSpaces[0].total || 0 };
+    const [lotData] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
+    const formattedLot = lotData.length > 0 ? {
+      total_spaces: Number(lotData[0].total_spaces) || 0,
+      used_spaces: Number(lotData[0].used_spaces) || 0
+    } : { total_spaces: 0, used_spaces: 0 };
+    const available = formattedLot.total_spaces - formattedLot.used_spaces;
+    const lotDetails = { categories, available, totalSpaces: formattedLot.total_spaces };
     res.render('public-parking', { 
       lots: [lotDetails], 
-      error: 'Failed to park vehicle', 
+      error: 'Failed to park vehicle: ' + err.message, 
+      success: null,
       validationErrors: [],
-      autofill: { number_plate, owner_name, phone, category_id }
+      autofill: { number_plate, owner_name, phone, category_id },
+      user: null
     });
   }
 });
 
-// Route to get VAPID public key for client-side subscription
+// Notification Routes
 app.get('/vapidPublicKey', (req, res) => {
   res.send(vapidKeys.publicKey);
 });
 
-// Route to subscribe to notifications
 app.post('/subscribe', (req, res) => {
   const subscription = req.body;
   req.session.subscription = subscription;
   res.status(201).json({});
 });
 
+// Logout Route
 app.get('/logout', (req, res) => {
   console.log('GET /logout');
   req.session.destroy();
   res.redirect('/login');
 });
 
+// Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
