@@ -1,4 +1,908 @@
+Take My Every Code I Think Then You WillUnderSatnd 
 
+C:\Users\epicg\Desktop\parking-management-system\views\partials\footer.ejs
+<footer class="bg-dark text-white text-center py-3 mt-4">
+  <p>© <%= new Date().getFullYear() %> Parking Management System. All rights reserved.</p>
+</footer>
+
+C:\Users\epicg\Desktop\parking-management-system\views\partials\header.ejs
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Badi Print Management System</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <a class="navbar-brand" href="/dashboard">Badi Print Management System</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav ml-auto">
+        <% if (user) { %>
+          <% if (user.permissions.entry || user.username === 'superadmin') { %>
+            <li class="nav-item">
+              <a class="nav-link" href="/entry">Entry</a>
+            </li>
+          <% } %>
+          <% if (user.permissions.exit || user.username === 'superadmin') { %>
+            <li class="nav-item">
+              <a class="nav-link" href="/exit">Exit</a>
+            </li>
+          <% } %>
+          <% if (user.permissions.manage || user.username === 'superadmin') { %>
+            <li class="nav-item">
+              <a class="nav-link" href="/manage">Manage</a>
+            </li>
+          <% } %>
+          <% if (user.permissions.profile || user.username === 'superadmin') { %>
+            <li class="nav-item">
+              <a class="nav-link" href="/profile">Profile</a>
+            </li>
+          <% } %>
+          <% if (user.permissions.add_admin || user.username === 'superadmin') { %>
+            <li class="nav-item">
+              <a class="nav-link" href="/add-admin">Add Admin</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="/manage-admins">Manage Admins</a>
+            </li>
+          <% } %>
+          <li class="nav-item">
+            <a class="nav-link" href="/logout">Logout</a>
+          </li>
+        <% } %>
+      </ul>
+    </div>
+  </nav>
+  <div class="container mt-4">
+
+C:\Users\epicg\Desktop\parking-management-system\views\add-admin.ejs
+<%- include('partials/header') %>
+<style>
+  .add-admin-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .form-group {
+    margin-bottom: 15px;
+  }
+  .form-group label {
+    font-weight: bold;
+  }
+  .checkbox-group {
+    margin-top: 10px;
+  }
+</style>
+<h2 class="text-center mb-4">Add New Admin</h2>
+<div class="add-admin-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <form action="/add-admin" method="POST">
+    <div class="form-group">
+      <label for="username">Username:</label>
+      <input type="text" class="form-control" id="username" name="username" required>
+    </div>
+    <div class="form-group">
+      <label for="password">Password:</label>
+      <input type="password" class="form-control" id="password" name="password" required>
+    </div>
+    <div class="form-group">
+      <label for="email">Email:</label>
+      <input type="email" class="form-control" id="email" name="email" required>
+    </div>
+    <div class="form-group checkbox-group">
+      <label>Permissions:</label><br>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="can_entry" name="can_entry">
+        <label class="form-check-label" for="can_entry">Can Entry</label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="can_exit" name="can_exit">
+        <label class="form-check-label" for="can_exit">Can Exit</label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="can_manage" name="can_manage">
+        <label class="form-check-label" for="can_manage">Can Manage</label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="checkbox" id="can_profile" name="can_profile">
+        <label class="form-check-label" for="can_profile">Can Profile</label>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block">Add Admin</button>
+    <% if (validationErrors && validationErrors.length > 0) { %>
+      <div class="alert alert-danger mt-2">
+        <% validationErrors.forEach(error => { %>
+          <p><%= error %></p>
+        <% }) %>
+      </div>
+    <% } %>
+  </form>
+</div>
+<%- include('partials/footer') %>
+
+C:\Users\epicg\Desktop\parking-management-system\views\confirm-delete-admin.ejs
+<%- include('partials/header') %>
+<style>
+  .confirm-delete-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .admin-info {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+  }
+</style>
+<h2 class="text-center mb-4">Confirm Delete Admin</h2>
+<div class="confirm-delete-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <% if (!admin) { %>
+    <div class="alert alert-danger text-center">Admin not found.</div>
+  <% } else { %>
+    <div class="admin-info">
+      <h4>Admin Details</h4>
+      <p><strong>Username:</strong> <%= admin.username %></p>
+      <p><strong>Email:</strong> <%= admin.email %></p>
+    </div>
+    <p class="text-center">Are you sure you want to delete this admin? This action cannot be undone.</p>
+    <form action="/manage-admins/delete/<%= admin.id %>" method="POST">
+      <button type="submit" class="btn btn-danger btn-block">Yes, Delete Admin</button>
+      <a href="/manage-admins" class="btn btn-secondary btn-block mt-2">Cancel</a>
+    </form>
+  <% } %>
+</div>
+<%- include('partials/footer') %>
+
+C:\Users\epicg\Desktop\parking-management-system\views\dashboard.ejs
+<%- include('partials/header') %>
+<style>
+  .space-bar {
+    height: 20px;
+    margin-bottom: 10px;
+  }
+  .space-bar.available {
+    background-color: #28a745;
+  }
+  .space-bar.parked {
+    background-color: #dc3545;
+  }
+</style>
+<h2 class="text-center mb-4">Dashboard</h2>
+<% if (error) { %>
+  <div class="alert alert-danger text-center"><%= error %></div>
+<% } %>
+<div class="container">
+  <div class="row mb-4">
+    <div class="col-md-4">
+      <div class="card text-center">
+        <div class="card-body">
+          <h5 class="card-title">Vehicles (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h5>
+          <p class="card-text"><%= vehicles %></p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-center">
+        <div class="card-body">
+          <h5 class="card-title">Earnings (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h5>
+          <p class="card-text text-center" id="earnings">PKR <%= (Number(earnings) || 0).toFixed(2) %></p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-center">
+        <div class="card-body">
+          <h5 class="card-title">Space Usage</h5>
+          <div class="space-bar available" style="width: <%= totalSpaces > 0 ? (available / totalSpaces) * 100 : 0 %>%;"></div>
+          <div>Available Spaces: <%= available %></div>
+          <div class="space-bar parked" style="width: <%= totalSpaces > 0 ? ((totalSpaces - available) / totalSpaces) * 100 : 0 %>%;"></div>
+          <div>Used Spaces: <%= totalSpaces - available %></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row mb-4">
+    <div class="col-12 text-center">
+      <a href="/dashboard?filter=today" class="btn btn-<%= filter === 'today' ? 'primary' : 'secondary' %> mx-2">Today</a>
+      <a href="/dashboard?filter=weekly" class="btn btn-<%= filter === 'weekly' ? 'primary' : 'secondary' %> mx-2">Weekly</a>
+      <a href="/dashboard?filter=monthly" class="btn btn-<%= filter === 'monthly' ? 'primary' : 'secondary' %> mx-2">Monthly</a>
+    </div>
+  </div>
+</div>
+<%- include('partials/footer') %>
+
+C:\Users\epicg\Desktop\parking-management-system\views\edit-admin.ejs
+<%- include('partials/header') %>
+<style>
+  .edit-admin-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .form-group {
+    margin-bottom: 15px;
+  }
+  .form-group label {
+    font-weight: bold;
+  }
+  .password-wrapper {
+    position: relative;
+  }
+  .password-wrapper input[type="password"],
+  .password-wrapper input[type="text"] {
+    padding-right: 40px; /* Space for the eye icon */
+  }
+  .password-wrapper .toggle-password {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #666;
+  }
+</style>
+<!-- Include Bootstrap Icons CDN -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<h2 class="text-center mb-4">Edit Admin</h2>
+<div class="edit-admin-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <% if (success) { %>
+    <div class="alert alert-success text-center"><%= success %></div>
+  <% } %>
+  <% if (!admin) { %>
+    <div class="alert alert-danger text-center">Admin not found.</div>
+  <% } else { %>
+    <form action="/manage-admins/edit/<%= admin.id %>" method="POST">
+      <div class="form-group">
+        <label for="username">Username:</label>
+        <input type="text" class="form-control" id="username" name="username" value="<%= admin.username %>" required>
+      </div>
+      <div class="form-group">
+        <label for="email">Email:</label>
+        <input type="email" class="form-control" id="email" name="email" value="<%= admin.email %>" required>
+      </div>
+      <div class="form-group">
+        <label for="password">New Password (required):</label>
+        <div class="password-wrapper">
+          <input type="password" class="form-control" id="password" name="password" value="<%= admin.plaintext_password || 'Password not available' %>" required>
+          <i class="bi bi-eye-slash toggle-password" id="togglePassword"></i>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Permissions:</label>
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" id="can_entry" name="can_entry" <%= admin.permissions.entry ? 'checked' : '' %>>
+          <label class="form-check-label" for="can_entry">Can Entry</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" id="can_exit" name="can_exit" <%= admin.permissions.exit ? 'checked' : '' %>>
+          <label class="form-check-label" for="can_exit">Can Exit</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" id="can_manage" name="can_manage" <%= admin.permissions.manage ? 'checked' : '' %>>
+          <label class="form-check-label" for="can_manage">Can Manage</label>
+        </div>
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" id="can_profile" name="can_profile" <%= admin.permissions.profile ? 'checked' : '' %>>
+          <label class="form-check-label" for="can_profile">Can Profile</label>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Update Admin</button>
+      <a href="/manage-admins" class="btn btn-secondary btn-block mt-2">Cancel</a>
+      <% if (validationErrors && validationErrors.length > 0) { %>
+        <div class="alert alert-danger mt-2">
+          <% validationErrors.forEach(error => { %>
+            <p><%= error %></p>
+          <% }) %>
+        </div>
+      <% } %>
+    </form>
+  <% } %>
+</div>
+<script>
+  // JavaScript to toggle password visibility
+  document.getElementById('togglePassword').addEventListener('click', function () {
+    const passwordField = document.getElementById('password');
+    const icon = this;
+    if (passwordField.type === 'password') {
+      passwordField.type = 'text';
+      icon.classList.remove('bi-eye-slash');
+      icon.classList.add('bi-eye');
+    } else {
+      passwordField.type = 'password';
+      icon.classList.remove('bi-eye');
+      icon.classList.add('bi-eye-slash');
+    }
+  });
+</script>
+<%- include('partials/footer') %>
+
+C:\Users\epicg\Desktop\parking-management-system\views\entry.ejs
+<%- include('partials/header') %>
+<style>
+  .entry-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .form-group {
+    margin-bottom: 15px;
+  }
+  .form-group label {
+    font-weight: bold;
+  }
+  .lot-info {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+</style>
+<h2 class="text-center mb-4">Vehicle Entry</h2>
+<div class="entry-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <!-- Lot Information -->
+  <!-- <div class="lot-info">
+    <h4>Parking Lot Status</h4>
+    <p>Total Spaces: <%= lot.total_spaces %> | Used Spaces: <%= lot.used_spaces %> | Available Spaces: <%= lot.total_spaces - lot.used_spaces %></p>
+  </div> -->
+  <!-- Entry Form -->
+  <form action="/entry" method="POST">
+    <div class="form-group">
+      <label for="number_plate">Number Plate:</label>
+      <input type="text" class="form-control" id="number_plate" name="number_plate" value="<%= autofill.number_plate || '' %>" required>
+    </div>
+    <div class="form-group">
+      <label for="owner_name">Owner Name (Optional):</label>
+      <input type="text" class="form-control" id="owner_name" name="owner_name" value="<%= autofill.owner_name || '' %>">
+    </div>
+    <div class="form-group">
+      <label for="phone">Phone Number (Optional):</label>
+      <input type="text" class="form-control" id="phone" name="phone" value="<%= autofill.phone || '' %>">
+    </div>
+    <div class="form-group">
+      <label for="category_id">Vehicle Category:</label>
+      <select class="form-control" id="category_id" name="category_id" required>
+        <% categories.forEach(category => { %>
+          <option value="<%= category.id %>" <%= autofill.category_id == category.id ? 'selected' : '' %>>
+            <%= category.name %> (Available Spaces: <%= category.available_spaces %>)
+          </option>
+        <% }) %>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block">Add Entry</button>
+    <% if (validationErrors && validationErrors.length > 0) { %>
+      <div class="alert alert-danger mt-2">
+        <% validationErrors.forEach(error => { %>
+          <p><%= error %></p>
+        <% }) %>
+      </div>
+    <% } %>
+  </form>
+</div>
+<%- include('partials/footer') %>
+
+C:\Users\epicg\Desktop\parking-management-system\views\exit.ejs
+<%- include('partials/header') %>
+<style>
+  .exit-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .entries-table {
+    margin-top: 20px;
+  }
+</style>
+<h2 class="text-center mb-4">Vehicle Exit</h2>
+<div class="exit-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <!-- Entries Table -->
+  <table class="table table-bordered entries-table">
+    <thead>
+      <tr>
+        <th>Number Plate</th>
+        <th>Entry Time</th>
+        <th>Owner Name</th>
+        <th>Phone</th>
+        <th>Category</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (entries && entries.length > 0) { %>
+        <% entries.forEach(entry => { %>
+          <tr>
+            <td><%= entry.number_plate %></td>
+            <td><%= new Date(entry.entry_time).toLocaleString() %></td>
+            <td><%= entry.owner_name || 'N/A' %></td>
+            <td><%= entry.phone || 'N/A' %></td>
+            <td><%= entry.category || 'Unknown' %></td>
+            <td>
+              <form action="/exit" method="POST">
+                <input type="hidden" name="entry_id" value="<%= entry.id %>">
+                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to process this exit?');">Exit</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      <% } else { %>
+        <tr>
+          <td colspan="6" class="text-center">No vehicles currently parked.</td>
+        </tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+<%- include('partials/footer') %>
+
+C:\Users\epicg\Desktop\parking-management-system\views\login.ejs
+<%- include('partials/header') %>
+<h2 class="text-center mb-4">Login to Parking Management System</h2>
+<div class="container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <form action="/login" method="POST" class="w-50 mx-auto">
+    <div class="form-group">
+      <label for="username">Username:</label>
+      <input type="text" class="form-control" id="username" name="username" required>
+    </div>
+    <div class="form-group">
+      <label for="password">Password:</label>
+      <input type="password" class="form-control" id="password" name="password" required>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block">Login</button>
+  </form>
+</div>
+<%- include('partials/footer') %>
+
+C:\Users\epicg\Desktop\parking-management-system\views\manage-admins.ejs
+<%- include('partials/header') %>
+<style>
+  .manage-admins-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .admins-table {
+    margin-top: 20px;
+  }
+</style>
+<h2 class="text-center mb-4">Manage Admins</h2>
+<div class="manage-admins-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <% if (success) { %>
+    <div class="alert alert-success text-center"><%= success %></div>
+  <% } %>
+  <!-- Admins Table -->
+  <table class="table table-bordered admins-table">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Email</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (admins && admins.length > 0) { %>
+        <% admins.forEach(admin => { %>
+          <tr>
+            <td><%= admin.username %></td>
+            <td><%= admin.email %></td>
+            <td>
+              <a href="/manage-admins/edit/<%= admin.id %>" class="btn btn-sm btn-primary">Edit</a>
+              <a href="/manage-admins/confirm-delete/<%= admin.id %>" class="btn btn-sm btn-danger">Delete</a>
+            </td>
+          </tr>
+        <% }) %>
+      <% } else { %>
+        <tr>
+          <td colspan="3" class="text-center">No admins found.</td>
+        </tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+<%- include('partials/footer') %>
+
+C:\Users\epicg\Desktop\parking-management-system\views\manage.ejs
+<%- include('partials/header') %>
+<style>
+  .manage-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .form-group {
+    margin-bottom: 15px;
+  }
+  .form-group label {
+    font-weight: bold;
+  }
+  .category-table {
+    margin-top: 20px;
+  }
+</style>
+<h2 class="text-center mb-4">Manage Parking System</h2>
+<div class="manage-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <% if (success) { %>
+    <div class="alert alert-success text-center"><%= success %></div>
+  <% } %>
+  <!-- Set Lot Spaces -->
+  <h4>Set Parking Lot Spaces</h4>
+  <form action="/manage/set-lot-spaces" method="POST">
+    <div class="form-group">
+      <label for="total_spaces">Total Spaces:</label>
+      <input type="number" class="form-control" id="total_spaces" name="total_spaces" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Set Spaces</button>
+  </form>
+  <hr>
+  <!-- Add/Edit Category -->
+  <h4><%= editCategory ? 'Edit Category' : 'Add New Category' %></h4>
+  <form action="<%= editCategory ? '/manage/edit/' + editCategory.id : '/manage/add-category' %>" method="POST">
+    <div class="form-group">
+      <label for="name">Category Name:</label>
+      <input type="text" class="form-control" id="name" name="name" value="<%= editCategory ? editCategory.name : '' %>" required>
+    </div>
+    <div class="form-group">
+      <label for="spaces_per_vehicle">Spaces per Vehicle:</label>
+      <input type="number" class="form-control" id="spaces_per_vehicle" name="spaces_per_vehicle" value="<%= editCategory ? editCategory.spaces_per_vehicle : '1' %>" required>
+    </div>
+    <div class="form-group">
+      <label for="pricing_type">Pricing Type:</label>
+      <select class="form-control" id="pricing_type" name="pricing_type" required>
+        <option value="hourly" <%= editCategory && editCategory.pricing_type === 'hourly' ? 'selected' : '' %>>Hourly</option>
+        <option value="per-entry" <%= editCategory && editCategory.pricing_type === 'per-entry' ? 'selected' : '' %>>Per Entry</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="price">Price:</label>
+      <input type="number" step="0.01" class="form-control" id="price" name="price" value="<%= editCategory ? editCategory.price : '0' %>" required>
+    </div>
+    <button type="submit" class="btn btn-primary"><%= editCategory ? 'Update Category' : 'Add Category' %></button>
+    <% if (editCategory) { %>
+      <a href="/manage" class="btn btn-secondary">Cancel</a>
+    <% } %>
+    <% if (validationErrors && validationErrors.length > 0) { %>
+      <div class="alert alert-danger mt-2">
+        <% validationErrors.forEach(error => { %>
+          <p><%= error %></p>
+        <% }) %>
+      </div>
+    <% } %>
+  </form>
+  <hr>
+  <!-- Categories Table -->
+  <h4>Vehicle Categories</h4>
+  <table class="table table-bordered category-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Spaces per Vehicle</th>
+        <th>Pricing Type</th>
+        <th>Price</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (categories && categories.length > 0) { %>
+        <% categories.forEach(category => { %>
+          <tr>
+            <td><%= category.name %></td>
+            <td><%= category.spaces_per_vehicle %></td>
+            <td><%= category.pricing_type.charAt(0).toUpperCase() + category.pricing_type.slice(1) %></td>
+            <td>PRK <%= category.price.toFixed(2) %></td>
+            <td>
+              <a href="/manage/edit/<%= category.id %>" class="btn btn-sm btn-primary">Edit</a>
+              <form action="/manage/delete/<%= category.id %>" method="POST" style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to delete this category?');">Delete</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      <% } else { %>
+        <tr>
+          <td colspan="5" class="text-center">No categories found.</td>
+        </tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+<%- include('partials/footer') %>
+
+C:\Users\epicg\Desktop\parking-management-system\views\profile.ejs
+<%- include('partials/header') %>
+<style>
+  .profile-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .form-group {
+    margin-bottom: 15px;
+  }
+  .form-group label {
+    font-weight: bold;
+  }
+</style>
+<h2 class="text-center mb-4">Your Profile</h2>
+<div class="profile-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <% if (success) { %>
+    <div class="alert alert-success text-center"><%= success %></div>
+  <% } %>
+  <form action="/profile" method="POST">
+    <div class="form-group">
+      <label for="username">Username:</label>
+      <input type="text" class="form-control" id="username" name="username" value="<%= admin.username %>" required>
+    </div>
+    <div class="form-group">
+      <label for="email">Email:</label>
+      <input type="email" class="form-control" id="email" name="email" value="<%= admin.email %>" required>
+    </div>
+    <div class="form-group">
+      <label for="password">New Password (leave blank to keep current password):</label>
+      <input type="password" class="form-control" id="password" name="password" placeholder="Enter new password">
+    </div>
+    <button type="submit" class="btn btn-primary btn-block">Update Profile</button>
+    <% if (validationErrors && validationErrors.length > 0) { %>
+      <div class="alert alert-danger mt-2">
+        <% validationErrors.forEach(error => { %>
+          <p><%= error %></p>
+        <% }) %>
+      </div>
+    <% } %>
+  </form>
+</div>
+
+C:\Users\epicg\Desktop\parking-management-system\views\public-parking.ejs
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Public Parking - Parking Management System</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="/public">Parking System</a>
+    </div>
+  </nav>
+  <div class="container mt-4">
+    <h2>Public Parking Interface</h2>
+    <button id="subscribeButton" class="btn btn-info mb-3">Enable Notifications</button>
+    <% if (typeof error !== 'undefined' && error && error !== 'null') { %>
+      <div class="alert alert-danger"><%= error %></div>
+    <% } %>
+    <% if (typeof validationErrors !== 'undefined' && Array.isArray(validationErrors) && validationErrors.length > 0) { %>
+      <div class="alert alert-danger">
+        <ul>
+          <% validationErrors.forEach(function(error) { %>
+            <li><%= error %></li>
+          <% }) %>
+        </ul>
+      </div>
+    <% } %>
+    <% if (Array.isArray(lots) && lots.length > 0) { %>
+      <% lots.forEach(function(lot) { %>
+        <div class="card mb-3">
+          <div class="card-body">
+            <p><strong>Total Spaces:</strong> <%= lot && lot.totalSpaces !== undefined ? lot.totalSpaces : 0 %></p>
+            <p><strong>Available Spaces:</strong> <%= lot && lot.available !== undefined ? lot.available : 0 %></p>
+            <h5>Pricing</h5>
+            <% if (lot && Array.isArray(lot.categories) && lot.categories.length > 0) { %>
+              <table class="table table-striped">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Pricing Type</th>
+                    <th>Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% lot.categories.forEach(function(category) { %>
+                    <tr>
+                      <td><%= category && category.name ? category.name : 'N/A' %></td>
+                      <td><%= category && category.pricing_type ? category.pricing_type : 'N/A' %></td>
+                      <td>$<%= category && category.price !== undefined ? Number(category.price).toFixed(2) : '0.00' %></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            <% } else { %>
+              <p>No categories available.</p>
+            <% } %>
+            <h5>Park Your Vehicle</h5>
+            <form action="/public/park" method="POST">
+              <div class="mb-3">
+                <label for="number_plate" class="form-label">Number Plate</label>
+                <input type="text" class="form-control" id="number_plate" name="number_plate" value="<%= autofill && autofill.number_plate ? autofill.number_plate : '' %>" required>
+                <small class="form-text text-muted">3-10 characters, uppercase letters and numbers only (e.g., ABC123)</small>
+              </div>
+              <div class="mb-3">
+                <label for="owner_name" class="form-label">Owner Name (Optional)</label>
+                <input type="text" class="form-control" id="owner_name" name="owner_name" value="<%= autofill && autofill.owner_name ? autofill.owner_name : '' %>">
+                <small class="form-text text-muted">1-50 characters, letters and spaces only</small>
+              </div>
+              <div class="mb-3">
+                <label for="phone" class="form-label">Phone (Optional)</label>
+                <input type="text" class="form-control" id="phone" name="phone" value="<%= autofill && autofill.phone ? autofill.phone : '' %>">
+                <small class="form-text text-muted">10-15 digits</small>
+              </div>
+              <div class="mb-3">
+                <label for="category_id" class="form-label">Vehicle Category</label>
+                <select class="form-select" id="category_id" name="category_id" required>
+                  <% lot.categories.forEach(function(category) { %>
+                    <option value="<%= category && category.id ? category.id : '' %>" <%= autofill && autofill.category_id == category.id ? 'selected' : '' %>>
+                      <%= category && category.name ? category.name : 'N/A' %>
+                    </option>
+                  <% }) %>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary">Park and Get Ticket</button>
+            </form>
+          </div>
+        </div>
+      <% }) %>
+    <% } else { %>
+      <p>No parking available.</p>
+    <% } %>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Notification subscription
+    const subscribeButton = document.getElementById('subscribeButton');
+    subscribeButton.addEventListener('click', async () => {
+      if ('serviceWorker' in navigator && 'PushManager' in window) {
+        try {
+          const registration = await navigator.serviceWorker.register('/service-worker.js');
+          const permission = await Notification.requestPermission();
+          if (permission === 'granted') {
+            const subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: await fetch('/vapidPublicKey').then(res => res.text())
+            });
+            await fetch('/subscribe', {
+              method: 'POST',
+              body: JSON.stringify(subscription),
+              headers: { 'Content-Type': 'application/json' }
+            });
+            alert('Notifications enabled!');
+            subscribeButton.disabled = true;
+          }
+        } catch (err) {
+          console.error('Notification subscription error:', err);
+          alert('Failed to enable notifications');
+        }
+      } else {
+        alert('Notifications not supported in this browser');
+      }
+    });
+  </script>
+</body>
+</html>
+
+C:\Users\epicg\Desktop\parking-management-system\views\reports.ejs
+<%- include('partials/header') %>
+<style>
+  .reports-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .stats-card {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .filter-buttons {
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .filter-buttons .btn {
+    margin: 0 5px;
+  }
+  .activity-table {
+    margin-top: 20px;
+  }
+</style>
+<h2 class="text-center mb-4">Reports</h2>
+<div class="reports-container">
+  <% if (error) { %>
+    <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <!-- Filter Buttons -->
+  <div class="filter-buttons">
+    <a href="/reports?filter=today" class="btn <%= filter === 'today' ? 'btn-primary' : 'btn-secondary' %>">Today</a>
+    <a href="/reports?filter=weekly" class="btn <%= filter === 'weekly' ? 'btn-primary' : 'btn-secondary' %>">Weekly</a>
+    <a href="/reports?filter=monthly" class="btn <%= filter === 'monthly' ? 'btn-primary' : 'btn-secondary' %>">Monthly</a>
+  </div>
+  <!-- Stats Cards -->
+  <div class="row">
+    <div class="col-md-4">
+      <div class="stats-card">
+        <h4>Total Earnings (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h4>
+        <p>$<%= totalEarnings.toFixed(2) %></p>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="stats-card">
+        <h4>Total Entries (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h4>
+        <p><%= totalEntries %></p>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="stats-card">
+        <h4>Total Exits (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h4>
+        <p><%= totalExits %></p>
+      </div>
+    </div>
+  </div>
+  <!-- Admin Activity Table -->
+  <h4>Admin Activity (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h4>
+  <table class="table table-bordered activity-table">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Entries</th>
+        <th>Exits</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% if (adminActivity && adminActivity.length > 0) { %>
+        <% adminActivity.forEach(activity => { %>
+          <tr>
+            <td><%= activity.username %></td>
+            <td><%= activity.entries_count || 0 %></td>
+            <td><%= activity.exits_count || 0 %></td>
+          </tr>
+        <% }) %>
+      <% } else { %>
+        <tr>
+          <td colspan="3" class="text-center">No admin activity found.</td>
+        </tr>
+      <% } %>
+    </tbody>
+  </table>
+</div>
+<%- include('partials/footer') %>
+
+C:\Users\epicg\Desktop\parking-management-system\server.js
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcrypt');
@@ -314,10 +1218,13 @@ app.post('/login', async (req, res) => {
           rows[0].permissions = JSON.parse(rows[0].permissions);
         }
         console.log('Parsed permissions:', rows[0].permissions);
-        // Store the plaintext password temporarily in the session
+        // Store the plaintext password in the session and database
         rows[0].plaintext_password = password;
         req.session.admin = rows[0];
         console.log('Session admin set:', req.session.admin);
+        // Update the plaintext_password in the database
+        await db.pool.query('UPDATE admins SET plaintext_password = ? WHERE id = ?', [password, rows[0].id]);
+        console.log('Updated plaintext_password in database for user:', username);
         // Explicitly save the session before redirecting
         req.session.save(err => {
           if (err) {
@@ -354,58 +1261,35 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
 
     const user = req.session.admin;
     const filter = req.query.filter || 'today';
-    let days = 1;
     let dateCondition = '';
 
     // Set today’s date in PKT
     const today = new Date();
     const todayPKT = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
-    const todayPKTDateStr = todayPKT.toISOString().split('T')[0]; // e.g., "2025-05-21"
+    const todayPKTDateStr = todayPKT.toISOString().split('T')[0]; // e.g., "2025-05-22"
     console.log('Today’s date (PKT):', todayPKTDateStr);
 
-    // Adjust date condition using application time
+    // Adjust date condition for vehicles and earnings
     if (filter === 'weekly') {
-      days = 7;
-      dateCondition = `AND DATE(x.exit_time) >= DATE_SUB('${todayPKTDateStr}', INTERVAL 7 DAY)`;
+      dateCondition = `>= DATE_SUB('${todayPKTDateStr}', INTERVAL 7 DAY)`;
     } else if (filter === 'monthly') {
-      days = 30;
-      dateCondition = `AND DATE(x.exit_time) >= DATE_SUB('${todayPKTDateStr}', INTERVAL 30 DAY)`;
+      dateCondition = `>= DATE_SUB('${todayPKTDateStr}', INTERVAL 30 DAY)`;
     } else {
-      days = 1;
-      dateCondition = `AND DATE(x.exit_time) = '${todayPKTDateStr}'`;
+      dateCondition = `= '${todayPKTDateStr}'`;
     }
 
-    // Fetch vehicle counts for the graph
-    const [vehicleCounts] = await db.pool.query(
-      `SELECT DATE(e.entry_time) as date, COUNT(*) as count 
-       FROM entries e 
-       WHERE 1=1 ${filter === 'today' ? `AND DATE(e.entry_time) = '${todayPKTDateStr}'` : `AND DATE(e.entry_time) >= DATE_SUB('${todayPKTDateStr}', INTERVAL ? DAY)`} 
-       GROUP BY DATE(e.entry_time) 
-       ORDER BY DATE(e.entry_time)`,
-      [days]
-    );
-    console.log('Vehicle counts for chart:', vehicleCounts);
-
-    // Fetch earnings for the graph
-    const [earningsPerDay] = await db.pool.query(
-      `SELECT DATE(x.exit_time) as date, COALESCE(SUM(x.cost), 0) as total 
-       FROM exits x 
-       WHERE 1=1 ${dateCondition} 
-       GROUP BY DATE(x.exit_time) 
-       ORDER BY DATE(x.exit_time)`
-    );
-    console.log('Earnings per day for chart:', earningsPerDay);
-
-    // Fetch today's vehicle count
+    // Fetch vehicle count for the selected period, converting entry_time to PKT
     const [vehicles] = await db.pool.query(
-      `SELECT COUNT(*) as count FROM entries WHERE DATE(entry_time) = '${todayPKTDateStr}'`
+      `SELECT COUNT(*) as count 
+       FROM entries 
+       WHERE DATE(CONVERT_TZ(entry_time, '+00:00', '+05:00')) ${dateCondition}`
     );
 
-    // Fetch earnings for the selected period
+    // Fetch earnings for the selected period, converting exit_time to PKT
     const [earnings] = await db.pool.query(
       `SELECT COALESCE(SUM(x.cost), 0) as total 
        FROM exits x 
-       WHERE 1=1 ${dateCondition}`
+       WHERE DATE(CONVERT_TZ(x.exit_time, '+00:00', '+05:00')) ${dateCondition}`
     );
 
     // Fetch currently parked vehicles to calculate used spaces
@@ -428,57 +1312,6 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
 
     console.log('Dashboard queries:', { vehicles: vehicles[0], earnings: earnings[0], parkedCount, totalUsedSpaces, totalSpaces, available });
 
-    const labels = [];
-    const vehicleData = [];
-    const earningsData = [];
-
-    if (filter === 'today') {
-      labels.push(todayPKTDateStr);
-
-      const vehicleEntry = vehicleCounts.find(v => {
-        const entryDateStr = v.date ? v.date.toISOString().split('T')[0] : null;
-        console.log('Comparing vehicle date:', { entryDateStr, dateStr: todayPKTDateStr });
-        return entryDateStr === todayPKTDateStr;
-      });
-      vehicleData.push(vehicleEntry ? vehicleEntry.count : 0);
-      console.log('Vehicle data for today:', vehicleData);
-
-      const earningEntry = earningsPerDay.find(e => {
-        const earningDateStr = e.date ? e.date.toISOString().split('T')[0] : null;
-        console.log('Comparing earning date:', { earningDateStr, dateStr: todayPKTDateStr });
-        return earningDateStr === todayPKTDateStr;
-      });
-      earningsData.push(earningEntry ? Number(earningEntry.total) : 0);
-      console.log('Earnings data for today:', earningsData);
-    } else {
-      for (let i = 0; i < days; i++) {
-        const date = new Date(todayPKT);
-        date.setDate(todayPKT.getDate() - (days - 1) + i);
-        const dateStr = date.toISOString().split('T')[0];
-        labels.push(dateStr);
-
-        const vehicleEntry = vehicleCounts.find(v => {
-          const entryDateStr = v.date ? v.date.toISOString().split('T')[0] : null;
-          console.log('Comparing vehicle date:', { entryDateStr, dateStr, index: i });
-          return entryDateStr === dateStr;
-        });
-        const vehicleValue = vehicleEntry ? vehicleEntry.count : 0;
-        vehicleData.push(vehicleValue);
-        console.log('Vehicle data point:', { date: dateStr, index: i, value: vehicleValue });
-
-        const earningEntry = earningsPerDay.find(e => {
-          const earningDateStr = e.date ? e.date.toISOString().split('T')[0] : null;
-          console.log('Comparing earning date:', { earningDateStr, dateStr, index: i });
-          return earningDateStr === dateStr;
-        });
-        const earningValue = earningEntry ? Number(earningEntry.total) : 0;
-        earningsData.push(earningValue);
-        console.log('Earning data point:', { date: dateStr, index: i, value: earningValue });
-      }
-    }
-
-    console.log('Chart data prepared:', { labels, vehicleData, earningsData });
-
     const renderData = {
       vehicles: vehicles[0].count || 0,
       earnings: Number(earnings[0].total) || 0,
@@ -488,9 +1321,6 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
       filter,
       error: null,
       success: null,
-      chartLabels: labels || [],
-      vehicleData: vehicleData || [],
-      earningsData: earningsData || [],
       user
     };
     console.log('Rendering dashboard with:', renderData);
@@ -508,12 +1338,82 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
       filter: 'today',
       error: 'Server error: ' + err.message,
       success: null,
-      chartLabels: [],
-      vehicleData: [],
-      earningsData: [],
       user: req.session.admin,
       hardRefresh: null
     });
+  }
+});
+
+app.get('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
+  console.log('GET /profile');
+  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
+  try {
+    const user = req.session.admin;
+    res.render('profile', { admin: user, error: null, success: null, validationErrors: [], user });
+  } catch (err) {
+    console.error('Profile error:', err);
+    fs.writeFileSync('server.log', `Profile error: ${err}\n`, { flag: 'a' });
+    res.render('profile', { admin: req.session.admin, error: 'Server error: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
+  }
+});
+
+app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
+  console.log('POST /profile');
+  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
+  const user = req.session.admin;
+  const { username, email, password } = req.body;
+  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
+
+  const validationErrors = [];
+  const usernameError = validateUsername(username);
+  const emailError = validateEmail(email);
+  let passwordError = null;
+  if (password) {
+    passwordError = validatePassword(password);
+  }
+
+  if (usernameError) validationErrors.push(usernameError);
+  if (emailError) validationErrors.push(emailError);
+  if (passwordError) validationErrors.push(passwordError);
+
+  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
+  if (duplicateUsername.length > 0) {
+    validationErrors.push('Username already exists');
+  }
+  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
+  if (duplicateEmail.length > 0) {
+    validationErrors.push('Email already exists');
+  }
+
+  if (validationErrors.length > 0) {
+    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
+  }
+
+  try {
+    let hashedPassword = user.password;
+    let plaintextPassword = user.plaintext_password;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+      plaintextPassword = password;
+    }
+
+    await db.pool.query(
+      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
+      [username, email, hashedPassword, plaintextPassword, user.id]
+    );
+
+    // Refresh the session with updated admin data
+    const [updatedAdmin] = await db.pool.query('SELECT * FROM admins WHERE id = ?', [user.id]);
+    req.session.admin = updatedAdmin[0];
+    if (typeof req.session.admin.permissions === 'string') {
+      req.session.admin.permissions = JSON.parse(req.session.admin.permissions);
+    }
+
+    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
+  } catch (err) {
+    console.error('Update profile error:', err);
+    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
+    res.render('profile', { admin: req.session.admin, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
   }
 });
 
@@ -1122,16 +2022,64 @@ app.post('/public/park', async (req, res) => {
 // Profile Routes
 // Profile Routes
 // Profile Routes
-app.get('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
-  console.log('GET /profile');
+
+app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
+  console.log('POST /profile');
   console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
+  const user = req.session.admin;
+  const { username, email, password } = req.body;
+  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
+
+  const validationErrors = [];
+  const usernameError = validateUsername(username);
+  const emailError = validateEmail(email);
+  let passwordError = null;
+  if (password) {
+    passwordError = validatePassword(password);
+  }
+
+  if (usernameError) validationErrors.push(usernameError);
+  if (emailError) validationErrors.push(emailError);
+  if (passwordError) validationErrors.push(passwordError);
+
+  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
+  if (duplicateUsername.length > 0) {
+    validationErrors.push('Username already exists');
+  }
+  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
+  if (duplicateEmail.length > 0) {
+    validationErrors.push('Email already exists');
+  }
+
+  if (validationErrors.length > 0) {
+    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
+  }
+
   try {
-    const user = req.session.admin;
-    res.render('profile', { admin: user, error: null, success: null, validationErrors: [], user });
+    let hashedPassword = user.password;
+    let plaintextPassword = user.plaintext_password;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+      plaintextPassword = password;
+    }
+
+    await db.pool.query(
+      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
+      [username, email, hashedPassword, plaintextPassword, user.id]
+    );
+
+    // Refresh the session with updated admin data
+    const [updatedAdmin] = await db.pool.query('SELECT * FROM admins WHERE id = ?', [user.id]);
+    req.session.admin = updatedAdmin[0];
+    if (typeof req.session.admin.permissions === 'string') {
+      req.session.admin.permissions = JSON.parse(req.session.admin.permissions);
+    }
+
+    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
   } catch (err) {
-    console.error('Profile error:', err);
-    fs.writeFileSync('server.log', `Profile error: ${err}\n`, { flag: 'a' });
-    res.render('profile', { admin: req.session.admin, error: 'Server error: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
+    console.error('Update profile error:', err);
+    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
+    res.render('profile', { admin: req.session.admin, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
   }
 });
 
@@ -1694,7 +2642,7 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
         <p><strong>Category:</strong> ${entry[0].category}</p>
         <p><strong>Entry Time:</strong> ${entryTime}</p>
         <p><strong>Exit Time:</strong> ${exitTimeFormatted}</p>
-        <p><strong>Total Cost:</strong> $${cost.toFixed(2)}</p>
+        <p><strong>Total Cost:</strong> ${cost.toFixed(2)} PKR</p>
         <p><strong>Processed By:</strong> ${user.username}</p>
       </div>
     `;
@@ -1877,10 +2825,10 @@ app.post('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'),
   const user = req.session.admin;
   const { id } = req.params;
   const { username, email, password, can_entry, can_exit, can_manage, can_profile } = req.body;
-  console.log('POST /manage-admins/edit/:id:', { id, username, email, password, can_entry, can_exit, can_manage, can_profile });
+  console.log('POST /manage-admins/edit/:id:', { id, username, email, password: password ? '[REDACTED]' : 'Not provided', can_entry, can_exit, can_manage, can_profile });
 
   try {
-    const [admins] = await db.pool.query('SELECT id, username, email, permissions, password, plaintext_password FROM admins WHERE id = ? AND username != ?', [id, user.username]);
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions, password FROM admins WHERE id = ? AND username != ?', [id, user.username]);
     if (admins.length === 0) {
       return res.render('edit-admin', { admin: null, error: 'Admin not found', success: null, validationErrors: [], user });
     }
@@ -1889,11 +2837,15 @@ app.post('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'),
     const validationErrors = [];
     const usernameError = validateUsername(username);
     const emailError = validateEmail(email);
-    const passwordError = validatePassword(password);
+    if (password) { // Only validate password if provided
+      const passwordError = validatePassword(password);
+      if (passwordError) validationErrors.push(passwordError);
+    } else {
+      validationErrors.push('Password is required');
+    }
 
     if (usernameError) validationErrors.push(usernameError);
     if (emailError) validationErrors.push(emailError);
-    if (passwordError) validationErrors.push(passwordError);
 
     const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, id]);
     if (duplicateUsername.length > 0) {
@@ -1925,19 +2877,15 @@ app.post('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'),
     };
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    console.log('Saving hashed password:', hashedPassword);
-    
-    // Check if username or password has changed
-    const usernameChanged = username !== adminToEdit.username;
-    const passwordChanged = password !== adminToEdit.plaintext_password;
-
     await db.pool.query(
-      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = NULL, permissions = ? WHERE id = ?',
-      [username, email, hashedPassword, JSON.stringify(permissions), id]
+      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ?, permissions = ? WHERE id = ?',
+      [username, email, hashedPassword, password, JSON.stringify(permissions), id]
     );
     console.log('Admin details updated:', { id, username, email, permissions });
 
     // If username or password has changed, invalidate all sessions for the admin
+    const usernameChanged = username !== adminToEdit.username;
+    const passwordChanged = !(await bcrypt.compare(password, adminToEdit.password));
     if (usernameChanged || passwordChanged) {
       invalidateUserSessions(id, req.sessionID);
       console.log(`Invalidated sessions for admin with ID ${id} due to ${usernameChanged ? 'username' : ''}${usernameChanged && passwordChanged ? ' and ' : ''}${passwordChanged ? 'password' : ''} change`);
@@ -1981,6 +2929,4 @@ app.get('/logout', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-});Login error: Error
-Login error: Error
-Login error: Error
+});

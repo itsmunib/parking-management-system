@@ -356,58 +356,35 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
 
     const user = req.session.admin;
     const filter = req.query.filter || 'today';
-    let days = 1;
     let dateCondition = '';
 
     // Set today’s date in PKT
     const today = new Date();
     const todayPKT = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
-    const todayPKTDateStr = todayPKT.toISOString().split('T')[0]; // e.g., "2025-05-21"
+    const todayPKTDateStr = todayPKT.toISOString().split('T')[0]; // e.g., "2025-05-22"
     console.log('Today’s date (PKT):', todayPKTDateStr);
 
-    // Adjust date condition using application time
+    // Adjust date condition for vehicles and earnings
     if (filter === 'weekly') {
-      days = 7;
-      dateCondition = `AND DATE(x.exit_time) >= DATE_SUB('${todayPKTDateStr}', INTERVAL 7 DAY)`;
+      dateCondition = `>= DATE_SUB('${todayPKTDateStr}', INTERVAL 7 DAY)`;
     } else if (filter === 'monthly') {
-      days = 30;
-      dateCondition = `AND DATE(x.exit_time) >= DATE_SUB('${todayPKTDateStr}', INTERVAL 30 DAY)`;
+      dateCondition = `>= DATE_SUB('${todayPKTDateStr}', INTERVAL 30 DAY)`;
     } else {
-      days = 1;
-      dateCondition = `AND DATE(x.exit_time) = '${todayPKTDateStr}'`;
+      dateCondition = `= '${todayPKTDateStr}'`;
     }
 
-    // Fetch vehicle counts for the graph
-    const [vehicleCounts] = await db.pool.query(
-      `SELECT DATE(e.entry_time) as date, COUNT(*) as count 
-       FROM entries e 
-       WHERE 1=1 ${filter === 'today' ? `AND DATE(e.entry_time) = '${todayPKTDateStr}'` : `AND DATE(e.entry_time) >= DATE_SUB('${todayPKTDateStr}', INTERVAL ? DAY)`} 
-       GROUP BY DATE(e.entry_time) 
-       ORDER BY DATE(e.entry_time)`,
-      [days]
-    );
-    console.log('Vehicle counts for chart:', vehicleCounts);
-
-    // Fetch earnings for the graph
-    const [earningsPerDay] = await db.pool.query(
-      `SELECT DATE(x.exit_time) as date, COALESCE(SUM(x.cost), 0) as total 
-       FROM exits x 
-       WHERE 1=1 ${dateCondition} 
-       GROUP BY DATE(x.exit_time) 
-       ORDER BY DATE(x.exit_time)`
-    );
-    console.log('Earnings per day for chart:', earningsPerDay);
-
-    // Fetch today's vehicle count
+    // Fetch vehicle count for the selected period, converting entry_time to PKT
     const [vehicles] = await db.pool.query(
-      `SELECT COUNT(*) as count FROM entries WHERE DATE(entry_time) = '${todayPKTDateStr}'`
+      `SELECT COUNT(*) as count 
+       FROM entries 
+       WHERE DATE(CONVERT_TZ(entry_time, '+00:00', '+05:00')) ${dateCondition}`
     );
 
-    // Fetch earnings for the selected period
+    // Fetch earnings for the selected period, converting exit_time to PKT
     const [earnings] = await db.pool.query(
       `SELECT COALESCE(SUM(x.cost), 0) as total 
        FROM exits x 
-       WHERE 1=1 ${dateCondition}`
+       WHERE DATE(CONVERT_TZ(x.exit_time, '+00:00', '+05:00')) ${dateCondition}`
     );
 
     // Fetch currently parked vehicles to calculate used spaces
@@ -430,57 +407,6 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
 
     console.log('Dashboard queries:', { vehicles: vehicles[0], earnings: earnings[0], parkedCount, totalUsedSpaces, totalSpaces, available });
 
-    const labels = [];
-    const vehicleData = [];
-    const earningsData = [];
-
-    if (filter === 'today') {
-      labels.push(todayPKTDateStr);
-
-      const vehicleEntry = vehicleCounts.find(v => {
-        const entryDateStr = v.date ? v.date.toISOString().split('T')[0] : null;
-        console.log('Comparing vehicle date:', { entryDateStr, dateStr: todayPKTDateStr });
-        return entryDateStr === todayPKTDateStr;
-      });
-      vehicleData.push(vehicleEntry ? vehicleEntry.count : 0);
-      console.log('Vehicle data for today:', vehicleData);
-
-      const earningEntry = earningsPerDay.find(e => {
-        const earningDateStr = e.date ? e.date.toISOString().split('T')[0] : null;
-        console.log('Comparing earning date:', { earningDateStr, dateStr: todayPKTDateStr });
-        return earningDateStr === todayPKTDateStr;
-      });
-      earningsData.push(earningEntry ? Number(earningEntry.total) : 0);
-      console.log('Earnings data for today:', earningsData);
-    } else {
-      for (let i = 0; i < days; i++) {
-        const date = new Date(todayPKT);
-        date.setDate(todayPKT.getDate() - (days - 1) + i);
-        const dateStr = date.toISOString().split('T')[0];
-        labels.push(dateStr);
-
-        const vehicleEntry = vehicleCounts.find(v => {
-          const entryDateStr = v.date ? v.date.toISOString().split('T')[0] : null;
-          console.log('Comparing vehicle date:', { entryDateStr, dateStr, index: i });
-          return entryDateStr === dateStr;
-        });
-        const vehicleValue = vehicleEntry ? vehicleEntry.count : 0;
-        vehicleData.push(vehicleValue);
-        console.log('Vehicle data point:', { date: dateStr, index: i, value: vehicleValue });
-
-        const earningEntry = earningsPerDay.find(e => {
-          const earningDateStr = e.date ? e.date.toISOString().split('T')[0] : null;
-          console.log('Comparing earning date:', { earningDateStr, dateStr, index: i });
-          return earningDateStr === dateStr;
-        });
-        const earningValue = earningEntry ? Number(earningEntry.total) : 0;
-        earningsData.push(earningValue);
-        console.log('Earning data point:', { date: dateStr, index: i, value: earningValue });
-      }
-    }
-
-    console.log('Chart data prepared:', { labels, vehicleData, earningsData });
-
     const renderData = {
       vehicles: vehicles[0].count || 0,
       earnings: Number(earnings[0].total) || 0,
@@ -490,9 +416,6 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
       filter,
       error: null,
       success: null,
-      chartLabels: labels || [],
-      vehicleData: vehicleData || [],
-      earningsData: earningsData || [],
       user
     };
     console.log('Rendering dashboard with:', renderData);
@@ -510,9 +433,6 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
       filter: 'today',
       error: 'Server error: ' + err.message,
       success: null,
-      chartLabels: [],
-      vehicleData: [],
-      earningsData: [],
       user: req.session.admin,
       hardRefresh: null
     });
