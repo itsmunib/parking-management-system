@@ -32,8 +32,8 @@
     <div class="col-md-4">
       <div class="card text-center">
         <div class="card-body">
-          <h5 class="card-title">Earnings</h5>
-          <p class="card-text text-center" id="earnings">PKR<%= (Number(earnings) || 0).toFixed(2) %></p>
+          <h5 class="card-title">Earnings (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h5>
+          <p class="card-text text-center" id="earnings">PKR <%= (Number(earnings) || 0).toFixed(2) %></p>
         </div>
       </div>
     </div>
@@ -41,7 +41,7 @@
       <div class="card text-center">
         <div class="card-body">
           <h5 class="card-title">Space Usage</h5>
-          <div class="space-bar available" style="width: <%= available > 0 ? (available / (available + (totalSpaces - available))) * 100 : 0 %>%;"></div>
+          <div class="space-bar available" style="width: <%= totalSpaces > 0 ? (available / totalSpaces) * 100 : 0 %>%;"></div>
           <div>Available Spaces: <%= available %></div>
           <div class="space-bar parked" style="width: <%= totalSpaces > 0 ? ((totalSpaces - available) / totalSpaces) * 100 : 0 %>%;"></div>
           <div>Used Spaces: <%= totalSpaces - available %></div>
@@ -69,95 +69,127 @@
     </div>
   </div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
-  const isTodayFilter = '<%= filter %>' === 'today';
-  const chartType = isTodayFilter ? 'bar' : 'line';
+  document.addEventListener('DOMContentLoaded', function() {
+    try {
+      const isTodayFilter = '<%= filter %>' === 'today';
+      const chartType = isTodayFilter ? 'bar' : 'line';
 
-  const vehicleCtx = document.getElementById('vehicleChart').getContext('2d');
-  new Chart(vehicleCtx, {
-    type: chartType,
-    data: {
-      labels: <%- JSON.stringify(chartLabels) %>,
-      datasets: [{
-        label: 'Vehicles',
-        data: <%- JSON.stringify(vehicleData) %>,
-        borderColor: '#007bff',
-        backgroundColor: 'rgba(0, 123, 255, 0.1)',
-        fill: true,
-        barThickness: isTodayFilter ? 40 : undefined
-      }]
-    },
-    options: {
-      responsive: true,
-      scales: {
-        y: {
-          beginAtZero: true,
-          title: {
-            display: true,
-            text: 'Number of Vehicles'
-          }
+      // Log data for debugging
+      const labels = <%- JSON.stringify(chartLabels) %>;
+      const vehicleData = <%- JSON.stringify(vehicleData) %>;
+      const earningsData = <%- JSON.stringify(earningsData) %>;
+      console.log('Chart data:', { labels, vehicleData, earningsData });
+
+      // Ensure canvas elements exist
+      const vehicleCtx = document.getElementById('vehicleChart');
+      if (!vehicleCtx) {
+        console.error('Vehicle chart canvas not found');
+        return;
+      }
+      const earningsCtx = document.getElementById('earningsChart');
+      if (!earningsCtx) {
+        console.error('Earnings chart canvas not found');
+        return;
+      }
+
+      // Vehicle Counts Chart
+      new Chart(vehicleCtx.getContext('2d'), {
+        type: chartType,
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Vehicles',
+            data: vehicleData,
+            borderColor: '#007bff',
+            backgroundColor: 'rgba(0, 123, 255, 0.3)',
+            borderWidth: 2,
+            fill: chartType === 'line',
+            barThickness: isTodayFilter ? 40 : undefined
+          }]
         },
-        x: {
-          title: {
-            display: true,
-            text: 'Date'
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top'
+            }
           },
-          ticks: {
-            autoSkip: false,
-            maxRotation: 0,
-            minRotation: 0,
-            callback: function(value, index, values) {
-              // Format the date to show only the day for non-today filters
-              const date = new Date(this.getLabelForValue(value));
-              return isTodayFilter ? date.toISOString().split('T')[0] : date.getDate();
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Number of Vehicles'
+              },
+              ticks: {
+                stepSize: 1
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Date'
+              },
+              ticks: {
+                autoSkip: false,
+                maxRotation: 0,
+                minRotation: 0
+              }
             }
           }
         }
-      }
-    }
-  });
+      });
 
-  const earningsCtx = document.getElementById('earningsChart').getContext('2d');
-  new Chart(earningsCtx, {
-    type: chartType,
-    data: {
-      labels: <%- JSON.stringify(chartLabels) %>,
-      datasets: [{
-        label: 'Earnings (PRK )',
-        data: <%- JSON.stringify(earningsData) %>,
-        borderColor: '#28a745',
-        backgroundColor: 'rgba(40, 167, 69, 0.1)',
-        fill: true,
-        barThickness: isTodayFilter ? 40 : undefined
-      }]
-    },
-    options: {
-      responsive: true,
-      scales: {
-        y: {
-          beginAtZero: true,
-          title: {
-            display: true,
-            text: 'Earnings (PRK)'
-          }
+      // Earnings Chart
+      new Chart(earningsCtx.getContext('2d'), {
+        type: chartType,
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Earnings (PKR)',
+            data: earningsData,
+            borderColor: '#28a745',
+            backgroundColor: 'rgba(40, 167, 69, 0.3)',
+            borderWidth: 2,
+            fill: chartType === 'line',
+            barThickness: isTodayFilter ? 40 : undefined
+          }]
         },
-        x: {
-          title: {
-            display: true,
-            text: 'Date'
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top'
+            }
           },
-          ticks: {
-            autoSkip: false,
-            maxRotation: 0,
-            minRotation: 0,
-            callback: function(value, index, values) {
-              const date = new Date(this.getLabelForValue(value));
-              return isTodayFilter ? date.toISOString().split('T')[0] : date.getDate();
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Earnings (PKR)'
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: 'Date'
+              },
+              ticks: {
+                autoSkip: false,
+                maxRotation: 0,
+                minRotation: 0
+              }
             }
           }
         }
-      }
+      });
+    } catch (error) {
+      console.error('Error initializing charts:', error);
     }
   });
 </script>
