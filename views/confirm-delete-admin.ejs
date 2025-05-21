@@ -27,9 +27,8 @@
     </div>
     <p class="text-center">Are you sure you want to delete this admin? This action cannot be undone.</p>
     <form action="/manage-admins/delete/<%= admin.id %>" method="POST">
-      <input type="hidden" name="filter" value="<%= filter %>">
       <button type="submit" class="btn btn-danger btn-block">Yes, Delete Admin</button>
-      <a href="/manage-admins?filter=<%= filter %>" class="btn btn-secondary btn-block mt-2">Cancel</a>
+      <a href="/manage-admins" class="btn btn-secondary btn-block mt-2">Cancel</a>
     </form>
   <% } %>
 </div>

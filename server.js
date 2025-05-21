@@ -1765,6 +1765,28 @@ app.get('/manage-admins', isAuthenticated, hasPermission('add_admin'), async (re
   }
 });
 
+app.get('/manage-admins/confirm-delete/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
+  console.log('GET /manage-admins/confirm-delete/:id');
+  const user = req.session.admin;
+  const { id } = req.params;
+  try {
+    const [admins] = await db.pool.query('SELECT id, username, email FROM admins WHERE id = ? AND username != ?', [id, user.username]);
+    console.log('Fetched admin for deletion confirmation:', admins);
+    if (admins.length === 0) {
+      console.log('Admin not found for ID:', id);
+      const [allAdmins] = await db.pool.query('SELECT id, username, email FROM admins WHERE username != ?', [user.username]);
+      return res.render('manage-admins', { admins: allAdmins, error: 'Admin not found or cannot delete yourself', success: null, user });
+    }
+    const adminToDelete = admins[0];
+    res.render('confirm-delete-admin', { admin: adminToDelete, error: null, success: null, user });
+  } catch (err) {
+    console.error('Confirm delete admin error:', err);
+    fs.writeFileSync('server.log', `Confirm delete admin error: ${err}\n`, { flag: 'a' });
+    const [admins] = await db.pool.query('SELECT id, username, email FROM admins WHERE username != ?', [user.username]);
+    res.render('manage-admins', { admins, error: 'Server error: ' + err.message, success: null, user });
+  }
+});
+
 app.get('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
   console.log('GET /manage-admins/edit/:id');
   const user = req.session.admin;
