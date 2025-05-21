@@ -373,12 +373,28 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
       dateCondition = `= '${todayPKTDateStr}'`;
     }
 
+    // Debug: Fetch recent entries to verify entry_time
+    const [recentEntries] = await db.pool.query(
+      `SELECT entry_time, CONVERT_TZ(entry_time, '+00:00', '+05:00') as entry_time_pkt 
+       FROM entries 
+       ORDER BY entry_time DESC LIMIT 5`
+    );
+    console.log('Recent entries:', recentEntries);
+
     // Fetch vehicle count for the selected period, converting entry_time to PKT
     const [vehicles] = await db.pool.query(
       `SELECT COUNT(*) as count 
        FROM entries 
        WHERE DATE(CONVERT_TZ(entry_time, '+00:00', '+05:00')) ${dateCondition}`
     );
+
+    // Debug: Fetch entries that should match the condition
+    const [matchingEntries] = await db.pool.query(
+      `SELECT entry_time, CONVERT_TZ(entry_time, '+00:00', '+05:00') as entry_time_pkt 
+       FROM entries 
+       WHERE DATE(CONVERT_TZ(entry_time, '+00:00', '+05:00')) ${dateCondition}`
+    );
+    console.log('Entries matching filter:', matchingEntries);
 
     // Fetch earnings for the selected period, converting exit_time to PKT
     const [earnings] = await db.pool.query(
@@ -439,6 +455,7 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
   }
 });
 
+// Profile Routes
 app.get('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
   console.log('GET /profile');
   console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
@@ -619,63 +636,6 @@ app.post('/manage/set-lot-spaces', isAuthenticated, hasPermission('manage'), asy
       validationErrors: [], 
       user
     });
-  }
-});
-
-app.post('/manage-admins/delete/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
-  console.log('POST /manage-admins/delete/:id');
-  const user = req.session.admin;
-  const { id } = req.params;
-  try {
-    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE id = ? AND username != ?', [id, user.username]);
-    if (admins.length === 0) {
-      const [allAdmins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
-      const parsedAllAdmins = allAdmins.map(admin => {
-        let parsedPermissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
-        if (admin.permissions) {
-          try {
-            parsedPermissions = { ...parsedPermissions, ...JSON.parse(admin.permissions) };
-          } catch (err) {
-            console.error(`Error parsing permissions for admin ${admin.username}:`, err);
-          }
-        }
-        return { ...admin, permissions: parsedPermissions };
-      });
-      return res.render('manage-admins', { admins: parsedAllAdmins, error: 'Admin not found or cannot delete yourself', success: null, user });
-    }
-
-    await db.pool.query('DELETE FROM admins WHERE id = ?', [id]);
-    console.log('Admin deleted:', { id });
-
-    const [updatedAdmins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
-    const parsedUpdatedAdmins = updatedAdmins.map(admin => {
-      let parsedPermissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
-      if (admin.permissions) {
-        try {
-          parsedPermissions = { ...parsedPermissions, ...JSON.parse(admin.permissions) };
-        } catch (err) {
-          console.error(`Error parsing permissions for admin ${admin.username}:`, err);
-        }
-      }
-      return { ...admin, permissions: parsedPermissions };
-    });
-    res.render('manage-admins', { admins: parsedUpdatedAdmins, error: null, success: 'Admin deleted successfully', user });
-  } catch (err) {
-    console.error('Delete admin error:', err);
-    fs.writeFileSync('server.log', `Delete admin error: ${err}\n`, { flag: 'a' });
-    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
-    const parsedAdmins = admins.map(admin => {
-      let parsedPermissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
-      if (admin.permissions) {
-        try {
-          parsedPermissions = { ...parsedPermissions, ...JSON.parse(admin.permissions) };
-        } catch (err) {
-          console.error(`Error parsing permissions for admin ${admin.username}:`, err);
-        }
-      }
-      return { ...admin, permissions: parsedPermissions };
-    });
-    res.render('manage-admins', { admins: parsedAdmins, error: 'Failed to delete admin: ' + err.message, success: null, user });
   }
 });
 
@@ -1038,7 +998,7 @@ app.post('/public/park', async (req, res) => {
       await connection.beginTransaction();
 
       const [entryResult] = await connection.query(
-        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
+        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, UTC_TIMESTAMP())',
         [number_plate, owner_name || null, phone || null, category_id]
       );
       const entryId = entryResult.insertId;
@@ -1111,313 +1071,6 @@ app.post('/public/park', async (req, res) => {
       autofill: { number_plate, owner_name, phone, category_id },
       user: null
     });
-  }
-});
-
-// Profile Routes
-// Profile Routes
-// Profile Routes
-
-app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
-  console.log('POST /profile');
-  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
-  const user = req.session.admin;
-  const { username, email, password } = req.body;
-  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
-
-  const validationErrors = [];
-  const usernameError = validateUsername(username);
-  const emailError = validateEmail(email);
-  let passwordError = null;
-  if (password) {
-    passwordError = validatePassword(password);
-  }
-
-  if (usernameError) validationErrors.push(usernameError);
-  if (emailError) validationErrors.push(emailError);
-  if (passwordError) validationErrors.push(passwordError);
-
-  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
-  if (duplicateUsername.length > 0) {
-    validationErrors.push('Username already exists');
-  }
-  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
-  if (duplicateEmail.length > 0) {
-    validationErrors.push('Email already exists');
-  }
-
-  if (validationErrors.length > 0) {
-    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
-  }
-
-  try {
-    let hashedPassword = user.password;
-    let plaintextPassword = user.plaintext_password;
-    if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
-      plaintextPassword = password;
-    }
-
-    await db.pool.query(
-      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
-      [username, email, hashedPassword, plaintextPassword, user.id]
-    );
-
-    // Refresh the session with updated admin data
-    const [updatedAdmin] = await db.pool.query('SELECT * FROM admins WHERE id = ?', [user.id]);
-    req.session.admin = updatedAdmin[0];
-    if (typeof req.session.admin.permissions === 'string') {
-      req.session.admin.permissions = JSON.parse(req.session.admin.permissions);
-    }
-
-    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
-  } catch (err) {
-    console.error('Update profile error:', err);
-    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
-    res.render('profile', { admin: req.session.admin, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
-  }
-});
-
-app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
-  console.log('POST /profile');
-  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
-  const user = req.session.admin;
-  const { username, email, password } = req.body;
-  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
-
-  const validationErrors = [];
-  const usernameError = validateUsername(username);
-  const emailError = validateEmail(email);
-  let passwordError = null;
-  if (password) {
-    passwordError = validatePassword(password);
-  }
-
-  if (usernameError) validationErrors.push(usernameError);
-  if (emailError) validationErrors.push(emailError);
-  if (passwordError) validationErrors.push(passwordError);
-
-  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
-  if (duplicateUsername.length > 0) {
-    validationErrors.push('Username already exists');
-  }
-  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
-  if (duplicateEmail.length > 0) {
-    validationErrors.push('Email already exists');
-  }
-
-  if (validationErrors.length > 0) {
-    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
-  }
-
-  try {
-    let hashedPassword = user.password;
-    let plaintextPassword = user.plaintext_password;
-    if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
-      plaintextPassword = password;
-    }
-
-    await db.pool.query(
-      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
-      [username, email, hashedPassword, plaintextPassword, user.id]
-    );
-
-    // Refresh the session with updated admin data
-    const [updatedAdmin] = await db.pool.query('SELECT * FROM admins WHERE id = ?', [user.id]);
-    req.session.admin = updatedAdmin[0];
-    if (typeof req.session.admin.permissions === 'string') {
-      req.session.admin.permissions = JSON.parse(req.session.admin.permissions);
-    }
-
-    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
-  } catch (err) {
-    console.error('Update profile error:', err);
-    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
-    res.render('profile', { admin: req.session.admin, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
-  }
-});
-
-app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
-  console.log('POST /profile');
-  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
-  const user = req.session.admin;
-  const { username, email, password } = req.body;
-  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
-
-  const validationErrors = [];
-  const usernameError = validateUsername(username);
-  const emailError = validateEmail(email);
-  let passwordError = null;
-  if (password) {
-    passwordError = validatePassword(password);
-  }
-
-  if (usernameError) validationErrors.push(usernameError);
-  if (emailError) validationErrors.push(emailError);
-  if (passwordError) validationErrors.push(passwordError);
-
-  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
-  if (duplicateUsername.length > 0) {
-    validationErrors.push('Username already exists');
-  }
-  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
-  if (duplicateEmail.length > 0) {
-    validationErrors.push('Email already exists');
-  }
-
-  if (validationErrors.length > 0) {
-    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
-  }
-
-  try {
-    let hashedPassword = user.password;
-    let plaintextPassword = user.plaintext_password;
-    if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
-      plaintextPassword = password;
-    }
-
-    await db.pool.query(
-      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
-      [username, email, hashedPassword, plaintextPassword, user.id]
-    );
-
-    req.session.admin = {
-      ...req.session.admin,
-      username,
-      email,
-      password: hashedPassword,
-      plaintext_password: plaintextPassword
-    };
-
-    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
-  } catch (err) {
-    console.error('Update profile error:', err);
-    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
-    res.render('profile', { admin: req.session.admin, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
-  }
-});
-
-app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
-  console.log('POST /profile');
-  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
-  const user = req.session.admin;
-  const { username, email, password } = req.body;
-  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
-
-  const validationErrors = [];
-  const usernameError = validateUsername(username);
-  const emailError = validateEmail(email);
-  let passwordError = null;
-  if (password) {
-    passwordError = validatePassword(password);
-  }
-
-  if (usernameError) validationErrors.push(usernameError);
-  if (emailError) validationErrors.push(emailError);
-  if (passwordError) validationErrors.push(passwordError);
-
-  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
-  if (duplicateUsername.length > 0) {
-    validationErrors.push('Username already exists');
-  }
-  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
-  if (duplicateEmail.length > 0) {
-    validationErrors.push('Email already exists');
-  }
-
-  if (validationErrors.length > 0) {
-    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
-  }
-
-  try {
-    let hashedPassword = user.password;
-    let plaintextPassword = user.plaintext_password;
-    if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
-      plaintextPassword = password;
-    }
-
-    await db.pool.query(
-      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
-      [username, email, hashedPassword, plaintextPassword, user.id]
-    );
-
-    req.session.admin = {
-      ...req.session.admin,
-      username,
-      email,
-      password: hashedPassword,
-      plaintext_password: plaintextPassword
-    };
-
-    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
-  } catch (err) {
-    console.error('Update profile error:', err);
-    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
-    res.render('profile', { admin: user, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user });
-  }
-});
-
-app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
-  console.log('POST /profile');
-  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
-  const user = req.session.admin;
-  const { username, email, password } = req.body;
-  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
-
-  const validationErrors = [];
-  const usernameError = validateUsername(username);
-  const emailError = validateEmail(email);
-  let passwordError = null;
-  if (password) {
-    passwordError = validatePassword(password);
-  }
-
-  if (usernameError) validationErrors.push(usernameError);
-  if (emailError) validationErrors.push(emailError);
-  if (passwordError) validationErrors.push(passwordError);
-
-  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
-  if (duplicateUsername.length > 0) {
-    validationErrors.push('Username already exists');
-  }
-  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
-  if (duplicateEmail.length > 0) {
-    validationErrors.push('Email already exists');
-  }
-
-  if (validationErrors.length > 0) {
-    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
-  }
-
-  try {
-    let hashedPassword = user.password;
-    let plaintextPassword = user.plaintext_password;
-    if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
-      plaintextPassword = password;
-    }
-
-    await db.pool.query(
-      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
-      [username, email, hashedPassword, plaintextPassword, user.id]
-    );
-
-    req.session.admin = {
-      ...req.session.admin,
-      username,
-      email,
-      password: hashedPassword,
-      plaintext_password: plaintextPassword
-    };
-
-    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
-  } catch (err) {
-    console.error('Update profile error:', err);
-    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
-    res.render('profile', { admin: user, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user });
   }
 });
 
@@ -1533,7 +1186,7 @@ app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => 
       await connection.beginTransaction();
 
       const [entryResult] = await connection.query(
-        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
+        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, UTC_TIMESTAMP())',
         [number_plate, owner_name || null, phone || null, category_id]
       );
 
@@ -1548,7 +1201,7 @@ app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => 
 
       // Fetch the newly created entry to get the entry_time
       const [newEntry] = await db.pool.query('SELECT entry_time FROM entries WHERE id = ?', [entryResult.insertId]);
-      const entryTime = new Date(newEntry[0].entry_time).toLocaleString();
+      const entryTime = new Date(newEntry[0].entry_time).toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
 
       // Generate the receipt content
       const receiptContent = `
@@ -1875,6 +1528,63 @@ app.get('/manage-admins/confirm-delete/:id', isAuthenticated, hasPermission('add
     fs.writeFileSync('server.log', `Confirm delete admin error: ${err}\n`, { flag: 'a' });
     const [admins] = await db.pool.query('SELECT id, username, email FROM admins WHERE username != ?', [user.username]);
     res.render('manage-admins', { admins, error: 'Server error: ' + err.message, success: null, user });
+  }
+});
+
+app.post('/manage-admins/delete/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
+  console.log('POST /manage-admins/delete/:id');
+  const user = req.session.admin;
+  const { id } = req.params;
+  try {
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE id = ? AND username != ?', [id, user.username]);
+    if (admins.length === 0) {
+      const [allAdmins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
+      const parsedAllAdmins = allAdmins.map(admin => {
+        let parsedPermissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
+        if (admin.permissions) {
+          try {
+            parsedPermissions = { ...parsedPermissions, ...JSON.parse(admin.permissions) };
+          } catch (err) {
+            console.error(`Error parsing permissions for admin ${admin.username}:`, err);
+          }
+        }
+        return { ...admin, permissions: parsedPermissions };
+      });
+      return res.render('manage-admins', { admins: parsedAllAdmins, error: 'Admin not found or cannot delete yourself', success: null, user });
+    }
+
+    await db.pool.query('DELETE FROM admins WHERE id = ?', [id]);
+    console.log('Admin deleted:', { id });
+
+    const [updatedAdmins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
+    const parsedUpdatedAdmins = updatedAdmins.map(admin => {
+      let parsedPermissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
+      if (admin.permissions) {
+        try {
+          parsedPermissions = { ...parsedPermissions, ...JSON.parse(admin.permissions) };
+        } catch (err) {
+          console.error(`Error parsing permissions for admin ${admin.username}:`, err);
+        }
+      }
+      return { ...admin, permissions: parsedPermissions };
+    });
+    res.render('manage-admins', { admins: parsedUpdatedAdmins, error: null, success: 'Admin deleted successfully', user });
+  } catch (err) {
+    console.error('Delete admin error:', err);
+    fs.writeFileSync('server.log', `Delete admin error: ${err}\n`, { flag: 'a' });
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
+    const parsedAdmins = admins.map(admin => {
+      let parsedPermissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
+      if (admin.permissions) {
+        try {
+          parsedPermissions = { ...parsedPermissions, ...JSON.parse(admin.permissions) };
+        } catch (err) {
+          console.error(`Error parsing permissions for admin ${admin.username}:`, err);
+        }
+      }
+      return { ...admin, permissions: parsedPermissions };
+    });
+    res.render('manage-admins', { admins: parsedAdmins, error: 'Failed to delete admin: ' + err.message, success: null, user });
   }
 });
 

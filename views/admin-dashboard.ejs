@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parking Management System</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    :root {
+      --primary-color: #007bff;
+      --secondary-color: #6c757d;
+      --dark-bg: #1a1d24;
+      --sidebar-bg: #212529;
+      --text-color: #f8f9fa;
+      --card-bg: #2c3036;
+      --border-radius: 8px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--dark-bg);
+      color: var(--text-color);
+      margin: 0;
+      overflow-x: hidden;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 250px;
+      height: 100vh;
+      background-color: var(--sidebar-bg);
+      padding: 20px;
+      transition: transform 0.3s ease;
+      z-index: 1000;
+    }
+
+    .sidebar .brand {
+      font-size: 1.5rem;
+      font-weight: bold;
+      color: var(--text-color);
+      margin-bottom: 30px;
+      display: flex;
+      align-items: center;
+    }
+
+    .sidebar .brand i {
+      margin-right: 10px;
+    }
+
+    .sidebar .nav-link {
+      display: flex;
+      align-items: center;
+      color: var(--text-color);
+      padding: 10px 15px;
+      margin-bottom: 10px;
+      border-radius: var(--border-radius);
+      transition: background-color 0.2s ease;
+    }
+
+    .sidebar .nav-link i {
+      margin-right: 10px;
+    }
+
+    .sidebar .nav-link:hover,
+    .sidebar .nav-link.active {
+      background-color: var(--primary-color);
+    }
+
+    /* Main Content */
+    .main-content {
+      margin-left: 250px;
+      padding: 30px;
+      min-height: 100vh;
+      transition: margin-left 0.3s ease;
+    }
+
+    .main-content .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+
+    .main-content .page-title {
+      font-size: 1.8rem;
+      font-weight: 600;
+    }
+
+    /* Cards */
+    .card {
+      background-color: var(--card-bg);
+      border: none;
+      border-radius: var(--border-radius);
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    }
+
+    .card h5 {
+      font-size: 1.2rem;
+      margin-bottom: 15px;
+    }
+
+    .card p {
+      font-size: 1.5rem;
+      font-weight: bold;
+      margin: 0;
+    }
+
+    /* Tables */
+    .table {
+      background-color: var(--card-bg);
+      color: var(--text-color);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+
+    .table th,
+    .table td {
+      border: none;
+      padding: 15px;
+      vertical-align: middle;
+    }
+
+    .table thead {
+      background-color: var(--primary-color);
+    }
+
+    .table tbody tr {
+      transition: background-color 0.2s ease;
+    }
+
+    .table tbody tr:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Forms */
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .form-control {
+      background-color: #3a3f47;
+      border: 1px solid #4a5059;
+      color: var(--text-color);
+      border-radius: var(--border-radius);
+      padding: 10px;
+    }
+
+    .form-control:focus {
+      background-color: #3a3f47;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+      color: var(--text-color);
+    }
+
+    .form-check-label {
+      margin-left: 8px;
+    }
+
+    .btn-primary {
+      background-color: var(--primary-color);
+      border: none;
+      border-radius: var(--border-radius);
+      padding: 10px 20px;
+      transition: background-color 0.2s ease;
+    }
+
+    .btn-primary:hover {
+      background-color: #0056b3;
+    }
+
+    .btn-secondary {
+      background-color: var(--secondary-color);
+      border: none;
+      border-radius: var(--border-radius);
+      padding: 10px 20px;
+    }
+
+    .btn-danger {
+      background-color: #dc3545;
+      border: none;
+      border-radius: var(--border-radius);
+      padding: 10px 20px;
+    }
+
+    .alert {
+      border-radius: var(--border-radius);
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+
+    /* Space Bars */
+    .space-bar {
+      height: 20px;
+      margin-bottom: 10px;
+      border-radius: var(--border-radius);
+    }
+
+    .space-bar.available {
+      background-color: #28a745;
+    }
+
+    .space-bar.parked {
+      background-color: #dc3545;
+    }
+
+    /* Password Toggle */
+    .password-wrapper {
+      position: relative;
+    }
+
+    .password-wrapper .toggle-password {
+      position: absolute;
+      right: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      color: var(--text-color);
+      opacity: 0.7;
+    }
+
+    .password-wrapper .toggle-password:hover {
+      opacity: 1;
+    }
+
+    /* Filter Buttons */
+    .filter-buttons .btn {
+      margin: 0 5px;
+      border-radius: var(--border-radius);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .sidebar {
+        transform: translateX(-250px);
+      }
+
+      .sidebar.active {
+        transform: translateX(0);
+      }
+
+      .main-content {
+        margin-left: 0;
+      }
+
+      .toggle-sidebar {
+        display: block;
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        z-index: 1100;
+        background-color: var(--primary-color);
+        border: none;
+        border-radius: var(--border-radius);
+        padding: 10px;
+        color: var(--text-color);
+      }
+    }
+
+    @media (min-width: 769px) {
+      .toggle-sidebar {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="brand">
+      <i class="bi bi-car-front-fill"></i> Parking System
+    </div>
+    <nav>
+      <a href="/dashboard" class="nav-link <%= page === 'dashboard' ? 'active' : '' %>">
+        <i class="bi bi-speedometer2"></i> Dashboard
+      </a>
+      <% if (user && (user.permissions.entry || user.username === 'superadmin')) { %>
+        <a href="/entry" class="nav-link <%= page === 'entry' ? 'active' : '' %>">
+          <i class="bi bi-box-arrow-in-right"></i> Entry
+        </a>
+      <% } %>
+      <% if (user && (user.permissions.exit || user.username === 'superadmin')) { %>
+        <a href="/exit" class="nav-link <%= page === 'exit' ? 'active' : '' %>">
+          <i class="bi bi-box-arrow-left"></i> Exit
+        </a>
+      <% } %>
+      <% if (user && (user.permissions.manage || user.username === 'superadmin')) { %>
+        <a href="/manage" class="nav-link <%= page === 'manage' ? 'active' : '' %>">
+          <i class="bi bi-gear"></i> Manage
+        </a>
+      <% } %>
+      <% if (user && (user.permissions.manage || user.username === 'superadmin')) { %>
+        <a href="/reports" class="nav-link <%= page === 'reports' ? 'active' : '' %>">
+          <i class="bi bi-bar-chart"></i> Reports
+        </a>
+      <% } %>
+      <% if (user && (user.permissions.profile || user.username === 'superadmin')) { %>
+        <a href="/profile" class="nav-link <%= page === 'profile' ? 'active' : '' %>">
+          <i class="bi bi-person"></i> Profile
+        </a>
+      <% } %>
+      <% if (user && (user.permissions.add_admin || user.username === 'superadmin')) { %>
+        <a href="/add-admin" class="nav-link <%= page === 'add-admin' ? 'active' : '' %>">
+          <i class="bi bi-person-plus"></i> Add Admin
+        </a>
+        <a href="/manage-admins" class="nav-link <%= page === 'manage-admins' || page === 'edit-admin' || page === 'confirm-delete-admin' ? 'active' : '' %>">
+          <i class="bi bi-people"></i> Manage Admins
+        </a>
+      <% } %>
+      <a href="/logout" class="nav-link">
+        <i class="bi bi-box-arrow-right"></i> Logout
+      </a>
+    </nav>
+  </div>
+
+  <!-- Toggle Sidebar Button (Mobile) -->
+  <button class="toggle-sidebar d-md-none" onclick="toggleSidebar()">
+    <i class="bi bi-list"></i>
+  </button>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Page Header -->
+    <div class="page-header">
+      <h2 class="page-title">
+        <%= page === 'dashboard' ? 'Dashboard' :
+            page === 'entry' ? 'Vehicle Entry' :
+            page === 'exit' ? 'Vehicle Exit' :
+            page === 'manage' ? 'Manage Parking System' :
+            page === 'reports' ? 'Reports' :
+            page === 'profile' ? 'Your Profile' :
+            page === 'add-admin' ? 'Add New Admin' :
+            page === 'manage-admins' ? 'Manage Admins' :
+            page === 'edit-admin' ? 'Edit Admin' :
+            page === 'confirm-delete-admin' ? 'Confirm Delete Admin' : 'Dashboard' %>
+      </h2>
+    </div>
+
+    <!-- Alerts -->
+    <% if (error) { %>
+      <div class="alert alert-danger"><%= error %></div>
+    <% } %>
+    <% if (success) { %>
+      <div class="alert alert-success"><%= success %></div>
+    <% } %>
+    <% if (validationErrors && validationErrors.length > 0) { %>
+      <div class="alert alert-danger">
+        <% validationErrors.forEach(error => { %>
+          <p><%= error %></p>
+        <% }) %>
+      </div>
+    <% } %>
+
+    <!-- Dynamic Content -->
+    <% if (page === 'dashboard') { %>
+      <!-- Dashboard -->
+      <div class="row">
+        <div class="col-md-4">
+          <div class="card">
+            <h5>Vehicles (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h5>
+            <p><%= vehicles %></p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <h5>Earnings (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h5>
+            <p>PKR <%= (Number(earnings) || 0).toFixed(2) %></p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <h5>Space Usage</h5>
+            <div class="space-bar available" style="width: <%= totalSpaces > 0 ? (available / totalSpaces) * 100 : 0 %>%;"></div>
+            <div>Available Spaces: <%= available %></div>
+            <div class="space-bar parked" style="width: <%= totalSpaces > 0 ? ((totalSpaces - available) / totalSpaces) * 100 : 0 %>%;"></div>
+            <div>Used Spaces: <%= totalSpaces - available %></div>
+          </div>
+        </div>
+      </div>
+      <div class="filter-buttons text-center">
+        <a href="/dashboard?filter=today" class="btn <%= filter === 'today' ? 'btn-primary' : 'btn-secondary' %>">Today</a>
+        <a href="/dashboard?filter=weekly" class="btn <%= filter === 'weekly' ? 'btn-primary' : 'btn-secondary' %>">Weekly</a>
+        <a href="/dashboard?filter=monthly" class="btn <%= filter === 'monthly' ? 'btn-primary' : 'btn-secondary' %>">Monthly</a>
+      </div>
+
+    <% } else if (page === 'entry') { %>
+      <!-- Vehicle Entry -->
+      <div class="card" style="max-width: 600px; margin: 0 auto;">
+        <form action="/entry" method="POST">
+          <div class="form-group">
+            <label for="number_plate">Number Plate</label>
+            <input type="text" class="form-control" id="number_plate" name="number_plate" value="<%= autofill.number_plate || '' %>" required>
+          </div>
+          <div class="form-group">
+            <label for="owner_name">Owner Name (Optional)</label>
+            <input type="text" class="form-control" id="owner_name" name="owner_name" value="<%= autofill.owner_name || '' %>">
+          </div>
+          <div class="form-group">
+            <label for="phone">Phone Number (Optional)</label>
+            <input type="text" class="form-control" id="phone" name="phone" value="<%= autofill.phone || '' %>">
+          </div>
+          <div class="form-group">
+            <label for="category_id">Vehicle Category</label>
+            <select class="form-control" id="category_id" name="category_id" required>
+              <% categories.forEach(category => { %>
+                <option value="<%= category.id %>" <%= autofill.category_id == category.id ? 'selected' : '' %>>
+                  <%= category.name %> (Available Spaces: <%= category.available_spaces %>)
+                </option>
+              <% }) %>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Add Entry</button>
+        </form>
+      </div>
+
+    <% } else if (page === 'exit') { %>
+      <!-- Vehicle Exit -->
+      <div class="card">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Number Plate</th>
+              <th>Entry Time</th>
+              <th>Owner Name</th>
+              <th>Phone</th>
+              <th>Category</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (entries && entries.length > 0) { %>
+              <% entries.forEach(entry => { %>
+                <tr>
+                  <td><%= entry.number_plate %></td>
+                  <td><%= new Date(entry.entry_time).toLocaleString() %></td>
+                  <td><%= entry.owner_name || 'N/A' %></td>
+                  <td><%= entry.phone || 'N/A' %></td>
+                  <td><%= entry.category || 'Unknown' %></td>
+                  <td>
+                    <form action="/exit" method="POST">
+                      <input type="hidden" name="entry_id" value="<%= entry.id %>">
+                      <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to process this exit?');">Exit</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            <% } else { %>
+              <tr>
+                <td colspan="6" class="text-center">No vehicles currently parked.</td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+
+    <% } else if (page === 'manage') { %>
+      <!-- Manage Parking System -->
+      <div class="card">
+        <h5>Set Parking Lot Spaces</h5>
+        <form action="/manage/set-lot-spaces" method="POST">
+          <div class="form-group">
+            <label for="total_spaces">Total Spaces</label>
+            <input type="number" class="form-control" id="total_spaces" name="total_spaces" required>
+          </div>
+          <button type="submit" class="btn btn-primary">Set Spaces</button>
+        </form>
+      </div>
+      <div class="card">
+        <h5><%= editCategory ? 'Edit Category' : 'Add New Category' %></h5>
+        <form action="<%= editCategory ? '/manage/edit/' + editCategory.id : '/manage/add-category' %>" method="POST">
+          <div class="form-group">
+            <label for="name">Category Name</label>
+            <input type="text" class="form-control" id="name" name="name" value="<%= editCategory ? editCategory.name : '' %>" required>
+          </div>
+          <div class="form-group">
+            <label for="spaces_per_vehicle">Spaces per Vehicle</label>
+            <input type="number" class="form-control" id="spaces_per_vehicle" name="spaces_per_vehicle" value="<%= editCategory ? editCategory.spaces_per_vehicle : '1' %>" required>
+          </div>
+          <div class="form-group">
+            <label for="pricing_type">Pricing Type</label>
+            <select class="form-control" id="pricing_type" name="pricing_type" required>
+              <option value="hourly" <%= editCategory && editCategory.pricing_type === 'hourly' ? 'selected' : '' %>>Hourly</option>
+              <option value="per-entry" <%= editCategory && editCategory.pricing_type === 'per-entry' ? 'selected' : '' %>>Per Entry</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="price">Price</label>
+            <input type="number" step="0.01" class="form-control" id="price" name="price" value="<%= editCategory ? editCategory.price : '0' %>" required>
+          </div>
+          <button type="submit" class="btn btn-primary"><%= editCategory ? 'Update Category' : 'Add Category' %></button>
+          <% if (editCategory) { %>
+            <a href="/manage" class="btn btn-secondary">Cancel</a>
+          <% } %>
+        </form>
+      </div>
+      <div class="card">
+        <h5>Vehicle Categories</h5>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Spaces per Vehicle</th>
+              <th>Pricing Type</th>
+              <th>Price</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (categories && categories.length > 0) { %>
+              <% categories.forEach(category => { %>
+                <tr>
+                  <td><%= category.name %></td>
+                  <td><%= category.spaces_per_vehicle %></td>
+                  <td><%= category.pricing_type.charAt(0).toUpperCase() + category.pricing_type.slice(1) %></td>
+                  <td>PKR <%= category.price.toFixed(2) %></td>
+                  <td>
+                    <a href="/manage/edit/<%= category.id %>" class="btn btn-primary btn-sm">Edit</a>
+                    <form action="/manage/delete/<%= category.id %>" method="POST" style="display:inline;">
+                      <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this category?');">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            <% } else { %>
+              <tr>
+                <td colspan="5" class="text-center">No categories found.</td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+
+    <% } else if (page === 'reports') { %>
+      <!-- Reports -->
+      <div class="row">
+        <div class="col-md-4">
+          <div class="card">
+            <h5>Total Earnings (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h5>
+            <p>PKR <%= totalEarnings.toFixed(2) %></p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <h5>Total Entries (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h5>
+            <p><%= totalEntries %></p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <h5>Total Exits (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h5>
+            <p><%= totalExits %></p>
+          </div>
+        </div>
+      </div>
+      <div class="filter-buttons text-center">
+        <a href="/reports?filter=today" class="btn <%= filter === 'today' ? 'btn-primary' : 'btn-secondary' %>">Today</a>
+        <a href="/reports?filter=weekly" class="btn <%= filter === 'weekly' ? 'btn-primary' : 'btn-secondary' %>">Weekly</a>
+        <a href="/reports?filter=monthly" class="btn <%= filter === 'monthly' ? 'btn-primary' : 'btn-secondary' %>">Monthly</a>
+      </div>
+      <div class="card">
+        <h5>Admin Activity (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h5>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Entries</th>
+              <th>Exits</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (adminActivity && adminActivity.length > 0) { %>
+              <% adminActivity.forEach(activity => { %>
+                <tr>
+                  <td><%= activity.username %></td>
+                  <td><%= activity.entries_count || 0 %></td>
+                  <td><%= activity.exits_count || 0 %></td>
+                </tr>
+              <% }) %>
+            <% } else { %>
+              <tr>
+                <td colspan="3" class="text-center">No admin activity found.</td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+
+    <% } else if (page === 'profile') { %>
+      <!-- Profile -->
+      <div class="card" style="max-width: 600px; margin: 0 auto;">
+        <form action="/profile" method="POST">
+          <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" class="form-control" id="username" name="username" value="<%= admin.username %>" required>
+          </div>
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" class="form-control" id="email" name="email" value="<%= admin.email %>" required>
+          </div>
+          <div class="form-group">
+            <label for="password">New Password (leave blank to keep current)</label>
+            <div class="password-wrapper">
+              <input type="password" class="form-control" id="password" name="password" placeholder="Enter new password">
+              <i class="bi bi-eye-slash toggle-password" id="togglePassword"></i>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Update Profile</button>
+        </form>
+      </div>
+
+    <% } else if (page === 'add-admin') { %>
+      <!-- Add Admin -->
+      <div class="card" style="max-width: 600px; margin: 0 auto;">
+        <form action="/add-admin" method="POST">
+          <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" class="form-control" id="username" name="username" required>
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <div class="password-wrapper">
+              <input type="password" class="form-control" id="password" name="password" required>
+              <i class="bi bi-eye-slash toggle-password" id="togglePassword"></i>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" class="form-control" id="email" name="email" required>
+          </div>
+          <div class="form-group">
+            <label>Permissions</label>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="can_entry" name="can_entry">
+              <label class="form-check-label" for="can_entry">Can Entry</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="can_exit" name="can_exit">
+              <label class="form-check-label" for="can_exit">Can Exit</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="can_manage" name="can_manage">
+              <label class="form-check-label" for="can_manage">Can Manage</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="can_profile" name="can_profile">
+              <label class="form-check-label" for="can_profile">Can Profile</label>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Add Admin</button>
+        </form>
+      </div>
+
+    <% } else if (page === 'manage-admins') { %>
+      <!-- Manage Admins -->
+      <div class="card">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (admins && admins.length > 0) { %>
+              <% admins.forEach(admin => { %>
+                <tr>
+                  <td><%= admin.username %></td>
+                  <td><%= admin.email %></td>
+                  <td>
+                    <a href="/manage-admins/edit/<%= admin.id %>" class="btn btn-primary btn-sm">Edit</a>
+                    <a href="/manage-admins/confirm-delete/<%= admin.id %>" class="btn btn-danger btn-sm">Delete</a>
+                  </td>
+                </tr>
+              <% }) %>
+            <% } else { %>
+              <tr>
+                <td colspan="3" class="text-center">No admins found.</td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+
+    <% } else if (page === 'edit-admin') { %>
+      <!-- Edit Admin -->
+      <div class="card" style="max-width: 600px; margin: 0 auto;">
+        <% if (!admin) { %>
+          <div class="alert alert-danger text-center">Admin not found.</div>
+        <% } else { %>
+          <form action="/manage-admins/edit/<%= admin.id %>" method="POST">
+            <div class="form-group">
+              <label for="username">Username</label>
+              <input type="text" class="form-control" id="username" name="username" value="<%= admin.username %>" required>
+            </div>
+            <div class="form-group">
+              <label for="email">Email</label>
+              <input type="email" class="form-control" id="email" name="email" value="<%= admin.email %>" required>
+            </div>
+            <div class="form-group">
+              <label for="password">New Password (required)</label>
+              <div class="password-wrapper">
+                <input type="password" class="form-control" id="password" name="password" value="<%= admin.plaintext_password || 'Password not available' %>" required>
+                <i class="bi bi-eye-slash toggle-password" id="togglePassword"></i>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Permissions</label>
+              <div class="form-check">
+                <input type="checkbox" class="form-check-input" id="can_entry" name="can_entry" <%= admin.permissions.entry ? 'checked' : '' %>>
+                <label class="form-check-label" for="can_entry">Can Entry</label>
+              </div>
+              <div class="form-check">
+                <input type="checkbox" class="form-check-input" id="can_exit" name="can_exit" <%= admin.permissions.exit ? 'checked' : '' %>>
+                <label class="form-check-label" for="can_exit">Can Exit</label>
+              </div>
+              <div class="form-check">
+                <input type="checkbox" class="form-check-input" id="can_manage" name="can_manage" <%= admin.permissions.manage ? 'checked' : '' %>>
+                <label class="form-check-label" for="can_manage">Can Manage</label>
+              </div>
+              <div class="form-check">
+                <input type="checkbox" class="form-check-input" id="can_profile" name="can_profile" <%= admin.permissions.profile ? 'checked' : '' %>>
+                <label class="form-check-label" for="can_profile">Can Profile</label>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Update Admin</button>
+            <a href="/manage-admins" class="btn btn-secondary w-100 mt-2">Cancel</a>
+          </form>
+        <% } %>
+      </div>
+
+    <% } else if (page === 'confirm-delete-admin') { %>
+      <!-- Confirm Delete Admin -->
+      <div class="card" style="max-width: 600px; margin: 0 auto;">
+        <% if (!admin) { %>
+          <div class="alert alert-danger text-center">Admin not found.</div>
+        <% } else { %>
+          <div class="card mb-3" style="background-color: #3a3f47;">
+            <div class="card-body">
+              <h5>Admin Details</h5>
+              <p><strong>Username:</strong> <%= admin.username %></p>
+              <p><strong>Email:</strong> <%= admin.email %></p>
+            </div>
+          </div>
+          <p class="text-center">Are you sure you want to delete this admin? This action cannot be undone.</p>
+          <form action="/manage-admins/delete/<%= admin.id %>" method="POST">
+            <button type="submit" class="btn btn-danger w-100">Yes, Delete Admin</button>
+            <a href="/manage-admins" class="btn btn-secondary w-100 mt-2">Cancel</a>
+          </form>
+        <% } %>
+      </div>
+
+    <% } %>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Toggle Sidebar (Mobile)
+    function toggleSidebar() {
+      const sidebar = document.querySelector('.sidebar');
+      sidebar.classList.toggle('active');
+    }
+
+    // Password Toggle
+    document.querySelectorAll('.toggle-password').forEach(toggle => {
+      toggle.addEventListener('click', function () {
+        const passwordField = this.previousElementSibling;
+        if (passwordField.type === 'password') {
+          passwordField.type = 'text';
+          this.classList.remove('bi-eye-slash');
+          this.classList.add('bi-eye');
+        } else {
+          passwordField.type = 'password';
+          this.classList.remove('bi-eye');
+          this.classList.add('bi-eye-slash');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,35 +1,258 @@
-<%- include('partials/header') %>
-<style>
-  .confirm-delete-container {
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 20px;
-  }
-  .admin-info {
-    background-color: #f8f9fa;
-    padding: 15px;
-    border-radius: 5px;
-    margin-bottom: 20px;
-  }
-</style>
-<h2 class="text-center mb-4">Confirm Delete Admin</h2>
-<div class="confirm-delete-container">
-  <% if (error) { %>
-    <div class="alert alert-danger text-center"><%= error %></div>
-  <% } %>
-  <% if (!admin) { %>
-    <div class="alert alert-danger text-center">Admin not found.</div>
-  <% } else { %>
-    <div class="admin-info">
-      <h4>Admin Details</h4>
-      <p><strong>Username:</strong> <%= admin.username %></p>
-      <p><strong>Email:</strong> <%= admin.email %></p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirm Delete Admin - Badi Parking Management System</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Font Awesome for Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f4f6f9;
+      margin: 0;
+      padding: 0;
+    }
+    /* Sidebar Styles */
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 250px;
+      background-color: #1a252f;
+      color: #ffffff;
+      padding-top: 20px;
+      transition: all 0.3s;
+    }
+    .sidebar .navbar-brand {
+      font-size: 1.5rem;
+      font-weight: 700;
+      padding: 20px 30px;
+      display: block;
+      color: #ffffff;
+      text-align: center;
+      border-bottom: 1px solid #2c3b4e;
+    }
+    .sidebar .nav-link {
+      color: #a4b0be;
+      padding: 15px 30px;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      transition: all 0.3s;
+    }
+    .sidebar .nav-link i {
+      margin-right: 10px;
+    }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active {
+      color: #ffffff;
+      background-color: #2c3b4e;
+    }
+    /* Main Content Styles */
+    .main-content {
+      margin-left: 250px;
+      padding: 30px;
+      min-height: 100vh;
+      background-color: #f4f6f9;
+    }
+    .page-header {
+      margin-bottom: 30px;
+    }
+    .page-header h2 {
+      font-weight: 700;
+      color: #2c3b4e;
+    }
+    /* Confirmation Card Styles */
+    .confirm-delete-card {
+      background-color: #ffffff;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .admin-info {
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    .admin-info h4 {
+      font-weight: 700;
+      color: #2c3b4e;
+      margin-bottom: 15px;
+    }
+    .admin-info p {
+      margin: 5px 0;
+      color: #2c3b4e;
+    }
+    .admin-info p strong {
+      font-weight: 500;
+    }
+    .confirm-message {
+      text-align: center;
+      color: #dc3545;
+      font-weight: 500;
+      margin-bottom: 20px;
+    }
+    .btn-danger {
+      background-color: #dc3545;
+      border-color: #dc3545;
+      padding: 10px 20px;
+      font-weight: 500;
+      border-radius: 5px;
+      width: 100%;
+      transition: background-color 0.3s;
+    }
+    .btn-danger:hover {
+      background-color: #c82333;
+      border-color: #bd2130;
+    }
+    .btn-secondary {
+      background-color: #e9ecef;
+      color: #2c3b4e;
+      border-color: #e9ecef;
+      padding: 10px 20px;
+      font-weight: 500;
+      border-radius: 5px;
+      width: 100%;
+      transition: background-color 0.3s;
+      margin-top: 10px;
+    }
+    .btn-secondary:hover {
+      background-color: #d3d7da;
+      border-color: #d3d7da;
+    }
+    /* Validation Errors and Messages */
+    .alert {
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 200px;
+        transform: translateX(-200px);
+      }
+      .sidebar.active {
+        transform: translateX(0);
+      }
+      .main-content {
+        margin-left: 0;
+      }
+      .sidebar-toggle {
+        display: block;
+        position: fixed;
+        top: 15px;
+        left: 15px;
+        font-size: 1.5rem;
+        color: #2c3b4e;
+        cursor: pointer;
+        z-index: 1000;
+      }
+      .confirm-delete-card {
+        padding: 20px;
+      }
+    }
+    @media (min-width: 769px) {
+      .sidebar-toggle {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Sidebar Toggle for Mobile -->
+  <i class="fas fa-bars sidebar-toggle"></i>
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <a class="navbar-brand" href="/dashboard">Badi Parking System</a>
+    <ul class="nav flex-column">
+      <% if (user) { %>
+        <% if (user.permissions.entry || user.username === 'superadmin') { %>
+          <li class="nav-item">
+            <a class="nav-link" href="/entry"><i class="fas fa-sign-in-alt"></i> Entry</a>
+          </li>
+        <% } %>
+        <% if (user.permissions.exit || user.username === 'superadmin') { %>
+          <li class="nav-item">
+            <a class="nav-link" href="/exit"><i class="fas fa-sign-out-alt"></i> Exit</a>
+          </li>
+        <% } %>
+        <% if (user.permissions.manage || user.username === 'superadmin') { %>
+          <li class="nav-item">
+            <a class="nav-link" href="/manage"><i class="fas fa-cogs"></i> Manage</a>
+          </li>
+        <% } %>
+        <% if (user.permissions.profile || user.username === 'superadmin') { %>
+          <li class="nav-item">
+            <a class="nav-link" href="/profile"><i class="fas fa-user"></i> Profile</a>
+          </li>
+        <% } %>
+        <% if (user.permissions.add_admin || user.username === 'superadmin') { %>
+          <li class="nav-item">
+            <a class="nav-link" href="/add-admin"><i class="fas fa-user-plus"></i> Add Admin</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link active" href="/manage-admins"><i class="fas fa-users-cog"></i> Manage Admins</a>
+          </li>
+        <% } %>
+        <li class="nav-item">
+          <a class="nav-link" href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </li>
+      <% } %>
+    </ul>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="page-header">
+      <h2>Confirm Delete Admin</h2>
     </div>
-    <p class="text-center">Are you sure you want to delete this admin? This action cannot be undone.</p>
-    <form action="/manage-admins/delete/<%= admin.id %>" method="POST">
-      <button type="submit" class="btn btn-danger btn-block">Yes, Delete Admin</button>
-      <a href="/manage-admins" class="btn btn-secondary btn-block mt-2">Cancel</a>
-    </form>
-  <% } %>
-</div>
-<%- include('partials/footer') %>
+
+    <% if (error) { %>
+      <div class="alert alert-danger text-center"><%= error %></div>
+    <% } %>
+
+    <!-- Confirmation Section -->
+    <div class="confirm-delete-card">
+      <% if (!admin) { %>
+        <div class="alert alert-danger text-center">Admin not found.</div>
+      <% } else { %>
+        <div class="admin-info">
+          <h4>Admin Details</h4>
+          <p><strong>Username:</strong> <%= admin.username %></p>
+          <p><strong>Email:</strong> <%= admin.email %></p>
+        </div>
+        <p class="confirm-message">Are you sure you want to delete this admin? This action cannot be undone.</p>
+        <form action="/manage-admins/delete/<%= admin.id %>" method="POST">
+          <button type="submit" class="btn btn-danger">Yes, Delete Admin</button>
+          <a href="/manage-admins" class="btn btn-secondary">Cancel</a>
+        </form>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-dark text-white text-center py-3 mt-4" style="position: fixed; bottom: 0; width: calc(100% - 250px); margin-left: 250px;">
+    <p>© <%= new Date().getFullYear() %> Badi Parking Management System. All rights reserved.</p>
+  </footer>
+
+  <!-- Bootstrap JS and Sidebar Toggle Script -->
+  <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    $(document).ready(function() {
+      $('.sidebar-toggle').click(function() {
+        $('.sidebar').toggleClass('active');
+      });
+    });
+  </script>
+</body>
+</html>

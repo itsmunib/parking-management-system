@@ -3,96 +3,285 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Public Parking - Parking Management System</title>
+  <title>Public Parking - Badi Parking Management System</title>
+  <!-- Bootstrap CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="/css/styles.css">
+  <!-- Font Awesome for Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f4f6f9;
+      margin: 0;
+      padding: 0;
+    }
+    /* Navbar Styles */
+    .navbar {
+      background-color: #1a252f;
+      padding: 15px 30px;
+    }
+    .navbar-brand {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    .navbar-brand:hover {
+      color: #a4b0be;
+    }
+    /* Main Content Styles */
+    .main-content {
+      padding: 30px;
+      min-height: 100vh;
+    }
+    .page-header {
+      margin-bottom: 30px;
+      text-align: center;
+    }
+    .page-header h2 {
+      font-weight: 700;
+      color: #2c3b4e;
+    }
+    /* Parking Lot Card Styles */
+    .lot-card {
+      background-color: #ffffff;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+      margin-bottom: 30px;
+    }
+    .lot-card h5 {
+      font-weight: 700;
+      color: #2c3b4e;
+      margin-bottom: 15px;
+    }
+    .lot-card p {
+      margin: 5px 0;
+      color: #2c3b4e;
+    }
+    .lot-card p strong {
+      font-weight: 500;
+    }
+    /* Pricing Table Styles */
+    .pricing-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin-bottom: 20px;
+    }
+    .pricing-table thead th {
+      background-color: #2c3b4e;
+      color: #ffffff;
+      padding: 15px;
+      font-weight: 500;
+      text-align: left;
+      border-bottom: 2px solid #dee2e6;
+    }
+    .pricing-table thead th:first-child {
+      border-top-left-radius: 8px;
+    }
+    .pricing-table thead th:last-child {
+      border-top-right-radius: 8px;
+    }
+    .pricing-table tbody tr {
+      transition: background-color 0.3s;
+    }
+    .pricing-table tbody tr:hover {
+      background-color: #f8f9fa;
+    }
+    .pricing-table tbody td {
+      padding: 15px;
+      border-bottom: 1px solid #dee2e6;
+      color: #2c3b4e;
+    }
+    /* Form Styles */
+    .lot-card .form-group {
+      margin-bottom: 20px;
+    }
+    .lot-card .form-group label {
+      font-weight: 500;
+      color: #2c3b4e;
+      margin-bottom: 5px;
+      display: block;
+    }
+    .lot-card .form-control {
+      border-radius: 5px;
+      border: 1px solid #ced4da;
+      padding: 10px;
+      font-size: 1rem;
+      transition: border-color 0.3s;
+    }
+    .lot-card .form-control:focus {
+      border-color: #2c3b4e;
+      box-shadow: 0 0 5px rgba(44, 59, 78, 0.2);
+    }
+    .lot-card .form-text {
+      color: #666;
+      font-size: 0.9rem;
+    }
+    .lot-card .btn-primary {
+      background-color: #2c3b4e;
+      border-color: #2c3b4e;
+      padding: 10px 20px;
+      font-weight: 500;
+      border-radius: 5px;
+      transition: background-color 0.3s;
+    }
+    .lot-card .btn-primary:hover {
+      background-color: #3b4a5a;
+      border-color: #3b4a5a;
+    }
+    /* Notification Button */
+    .btn-info {
+      background-color: #17a2b8;
+      border-color: #17a2b8;
+      padding: 10px 20px;
+      font-weight: 500;
+      border-radius: 5px;
+      transition: background-color 0.3s;
+      margin-bottom: 20px;
+    }
+    .btn-info:hover {
+      background-color: #138496;
+      border-color: #117a8b;
+    }
+    .btn-info:disabled {
+      background-color: #6c757d;
+      border-color: #6c757d;
+    }
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 20px;
+      color: #666;
+      font-style: italic;
+    }
+    /* Validation Errors and Messages */
+    .alert {
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .main-content {
+        padding: 20px;
+      }
+      .lot-card {
+        padding: 20px;
+      }
+      .pricing-table thead th, .pricing-table tbody td {
+        padding: 10px;
+        font-size: 0.9rem;
+      }
+      .lot-card .form-control {
+        font-size: 0.9rem;
+      }
+      .lot-card .btn-primary {
+        padding: 8px 16px;
+        font-size: 0.9rem;
+      }
+      .btn-info {
+        padding: 8px 16px;
+        font-size: 0.9rem;
+      }
+    }
+  </style>
 </head>
 <body>
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark">
     <div class="container-fluid">
-      <a class="navbar-brand" href="/public">Parking System</a>
+      <a class="navbar-brand" href="/public">Badi Parking System</a>
     </div>
   </nav>
-  <div class="container mt-4">
-    <h2>Public Parking Interface</h2>
-    <button id="subscribeButton" class="btn btn-info mb-3">Enable Notifications</button>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="page-header">
+      <h2>Public Parking Interface</h2>
+    </div>
+
+    <button id="subscribeButton" class="btn btn-info d-block mx-auto">Enable Notifications</button>
+
     <% if (typeof error !== 'undefined' && error && error !== 'null') { %>
-      <div class="alert alert-danger"><%= error %></div>
+      <div class="alert alert-danger text-center"><%= error %></div>
     <% } %>
     <% if (typeof validationErrors !== 'undefined' && Array.isArray(validationErrors) && validationErrors.length > 0) { %>
-      <div class="alert alert-danger">
-        <ul>
+      <div class="alert alert-danger text-center">
+        <ul class="mb-0">
           <% validationErrors.forEach(function(error) { %>
             <li><%= error %></li>
           <% }) %>
         </ul>
       </div>
     <% } %>
+
     <% if (Array.isArray(lots) && lots.length > 0) { %>
       <% lots.forEach(function(lot) { %>
-        <div class="card mb-3">
-          <div class="card-body">
-            <p><strong>Total Spaces:</strong> <%= lot && lot.totalSpaces !== undefined ? lot.totalSpaces : 0 %></p>
-            <p><strong>Available Spaces:</strong> <%= lot && lot.available !== undefined ? lot.available : 0 %></p>
-            <h5>Pricing</h5>
-            <% if (lot && Array.isArray(lot.categories) && lot.categories.length > 0) { %>
-              <table class="table table-striped">
-                <thead>
+        <div class="lot-card">
+          <p><strong>Total Spaces:</strong> <%= lot && lot.totalSpaces !== undefined ? lot.totalSpaces : 0 %></p>
+          <p><strong>Available Spaces:</strong> <%= lot && lot.available !== undefined ? lot.available : 0 %></p>
+          <h5>Pricing</h5>
+          <% if (lot && Array.isArray(lot.categories) && lot.categories.length > 0) { %>
+            <table class="pricing-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Pricing Type</th>
+                  <th>Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% lot.categories.forEach(function(category) { %>
                   <tr>
-                    <th>Category</th>
-                    <th>Pricing Type</th>
-                    <th>Price</th>
+                    <td><%= category && category.name ? category.name : 'N/A' %></td>
+                    <td><%= category && category.pricing_type ? category.pricing_type : 'N/A' %></td>
+                    <td>PKR <%= category && category.price !== undefined ? Number(category.price).toFixed(2) : '0.00' %></td>
                   </tr>
-                </thead>
-                <tbody>
-                  <% lot.categories.forEach(function(category) { %>
-                    <tr>
-                      <td><%= category && category.name ? category.name : 'N/A' %></td>
-                      <td><%= category && category.pricing_type ? category.pricing_type : 'N/A' %></td>
-                      <td>$<%= category && category.price !== undefined ? Number(category.price).toFixed(2) : '0.00' %></td>
-                    </tr>
-                  <% }) %>
-                </tbody>
-              </table>
-            <% } else { %>
-              <p>No categories available.</p>
-            <% } %>
-            <h5>Park Your Vehicle</h5>
-            <form action="/public/park" method="POST">
-              <div class="mb-3">
-                <label for="number_plate" class="form-label">Number Plate</label>
-                <input type="text" class="form-control" id="number_plate" name="number_plate" value="<%= autofill && autofill.number_plate ? autofill.number_plate : '' %>" required>
-                <small class="form-text text-muted">3-10 characters, uppercase letters and numbers only (e.g., ABC123)</small>
-              </div>
-              <div class="mb-3">
-                <label for="owner_name" class="form-label">Owner Name (Optional)</label>
-                <input type="text" class="form-control" id="owner_name" name="owner_name" value="<%= autofill && autofill.owner_name ? autofill.owner_name : '' %>">
-                <small class="form-text text-muted">1-50 characters, letters and spaces only</small>
-              </div>
-              <div class="mb-3">
-                <label for="phone" class="form-label">Phone (Optional)</label>
-                <input type="text" class="form-control" id="phone" name="phone" value="<%= autofill && autofill.phone ? autofill.phone : '' %>">
-                <small class="form-text text-muted">10-15 digits</small>
-              </div>
-              <div class="mb-3">
-                <label for="category_id" class="form-label">Vehicle Category</label>
-                <select class="form-select" id="category_id" name="category_id" required>
-                  <% lot.categories.forEach(function(category) { %>
-                    <option value="<%= category && category.id ? category.id : '' %>" <%= autofill && autofill.category_id == category.id ? 'selected' : '' %>>
-                      <%= category && category.name ? category.name : 'N/A' %>
-                    </option>
-                  <% }) %>
-                </select>
-              </div>
-              <button type="submit" class="btn btn-primary">Park and Get Ticket</button>
-            </form>
-          </div>
+                <% }) %>
+              </tbody>
+            </table>
+          <% } else { %>
+            <p class="empty-state">No categories available.</p>
+          <% } %>
+          <h5>Park Your Vehicle</h5>
+          <form action="/public/park" method="POST">
+            <div class="mb-3">
+              <label for="number_plate" class="form-label">Number Plate</label>
+              <input type="text" class="form-control" id="number_plate" name="number_plate" value="<%= autofill && autofill.number_plate ? autofill.number_plate : '' %>" required>
+              <small class="form-text text-muted">3-10 characters, uppercase letters and numbers only (e.g., ABC123)</small>
+            </div>
+            <div class="mb-3">
+              <label for="owner_name" class="form-label">Owner Name (Optional)</label>
+              <input type="text" class="form-control" id="owner_name" name="owner_name" value="<%= autofill && autofill.owner_name ? autofill.owner_name : '' %>">
+              <small class="form-text text-muted">1-50 characters, letters and spaces only</small>
+            </div>
+            <div class="mb-3">
+              <label for="phone" class="form-label">Phone (Optional)</label>
+              <input type="text" class="form-control" id="phone" name="phone" value="<%= autofill && autofill.phone ? autofill.phone : '' %>">
+              <small class="form-text text-muted">10-15 digits</small>
+            </div>
+            <div class="mb-3">
+              <label for="category_id" class="form-label">Vehicle Category</label>
+              <select class="form-select" id="category_id" name="category_id" required>
+                <% lot.categories.forEach(function(category) { %>
+                  <option value="<%= category && category.id ? category.id : '' %>" <%= autofill && autofill.category_id == category.id ? 'selected' : '' %>>
+                    <%= category && category.name ? category.name : 'N/A' %>
+                  </option>
+                <% }) %>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary d-block w-100">Park and Get Ticket</button>
+          </form>
         </div>
       <% }) %>
     <% } else { %>
-      <p>No parking available.</p>
+      <p class="empty-state text-center">No parking available.</p>
     <% } %>
   </div>
+
+  <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     // Notification subscription

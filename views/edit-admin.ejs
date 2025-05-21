@@ -1,106 +1,333 @@
-<%- include('partials/header') %>
-<style>
-  .edit-admin-container {
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 20px;
-  }
-  .form-group {
-    margin-bottom: 15px;
-  }
-  .form-group label {
-    font-weight: bold;
-  }
-  .password-wrapper {
-    position: relative;
-  }
-  .password-wrapper input[type="password"],
-  .password-wrapper input[type="text"] {
-    padding-right: 40px; /* Space for the eye icon */
-  }
-  .password-wrapper .toggle-password {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    cursor: pointer;
-    color: #666;
-  }
-</style>
-<!-- Include Bootstrap Icons CDN -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-<h2 class="text-center mb-4">Edit Admin</h2>
-<div class="edit-admin-container">
-  <% if (error) { %>
-    <div class="alert alert-danger text-center"><%= error %></div>
-  <% } %>
-  <% if (success) { %>
-    <div class="alert alert-success text-center"><%= success %></div>
-  <% } %>
-  <% if (!admin) { %>
-    <div class="alert alert-danger text-center">Admin not found.</div>
-  <% } else { %>
-    <form action="/manage-admins/edit/<%= admin.id %>" method="POST">
-      <div class="form-group">
-        <label for="username">Username:</label>
-        <input type="text" class="form-control" id="username" name="username" value="<%= admin.username %>" required>
-      </div>
-      <div class="form-group">
-        <label for="email">Email:</label>
-        <input type="email" class="form-control" id="email" name="email" value="<%= admin.email %>" required>
-      </div>
-      <div class="form-group">
-        <label for="password">New Password (required):</label>
-        <div class="password-wrapper">
-          <input type="password" class="form-control" id="password" name="password" value="<%= admin.plaintext_password || 'Password not available' %>" required>
-          <i class="bi bi-eye-slash toggle-password" id="togglePassword"></i>
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Permissions:</label>
-        <div class="form-check">
-          <input type="checkbox" class="form-check-input" id="can_entry" name="can_entry" <%= admin.permissions.entry ? 'checked' : '' %>>
-          <label class="form-check-label" for="can_entry">Can Entry</label>
-        </div>
-        <div class="form-check">
-          <input type="checkbox" class="form-check-input" id="can_exit" name="can_exit" <%= admin.permissions.exit ? 'checked' : '' %>>
-          <label class="form-check-label" for="can_exit">Can Exit</label>
-        </div>
-        <div class="form-check">
-          <input type="checkbox" class="form-check-input" id="can_manage" name="can_manage" <%= admin.permissions.manage ? 'checked' : '' %>>
-          <label class="form-check-label" for="can_manage">Can Manage</label>
-        </div>
-        <div class="form-check">
-          <input type="checkbox" class="form-check-input" id="can_profile" name="can_profile" <%= admin.permissions.profile ? 'checked' : '' %>>
-          <label class="form-check-label" for="can_profile">Can Profile</label>
-        </div>
-      </div>
-      <button type="submit" class="btn btn-primary btn-block">Update Admin</button>
-      <a href="/manage-admins" class="btn btn-secondary btn-block mt-2">Cancel</a>
-      <% if (validationErrors && validationErrors.length > 0) { %>
-        <div class="alert alert-danger mt-2">
-          <% validationErrors.forEach(error => { %>
-            <p><%= error %></p>
-          <% }) %>
-        </div>
-      <% } %>
-    </form>
-  <% } %>
-</div>
-<script>
-  // JavaScript to toggle password visibility
-  document.getElementById('togglePassword').addEventListener('click', function () {
-    const passwordField = document.getElementById('password');
-    const icon = this;
-    if (passwordField.type === 'password') {
-      passwordField.type = 'text';
-      icon.classList.remove('bi-eye-slash');
-      icon.classList.add('bi-eye');
-    } else {
-      passwordField.type = 'password';
-      icon.classList.remove('bi-eye');
-      icon.classList.add('bi-eye-slash');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit Admin - Badi Parking Management System</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Font Awesome for Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <!-- Bootstrap Icons CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f4f6f9;
+      margin: 0;
+      padding: 0;
     }
-  });
-</script>
-<%- include('partials/footer') %>
+    /* Sidebar Styles */
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 250px;
+      background-color: #1a252f;
+      color: #ffffff;
+      padding-top: 20px;
+      transition: all 0.3s;
+    }
+    .sidebar .navbar-brand {
+      font-size: 1.5rem;
+      font-weight: 700;
+      padding: 20px 30px;
+      display: block;
+      color: #ffffff;
+      text-align: center;
+      border-bottom: 1px solid #2c3b4e;
+    }
+    .sidebar .nav-link {
+      color: #a4b0be;
+      padding: 15px 30px;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      transition: all 0.3s;
+    }
+    .sidebar .nav-link i {
+      margin-right: 10px;
+    }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active {
+      color: #ffffff;
+      background-color: #2c3b4e;
+    }
+    /* Main Content Styles */
+    .main-content {
+      margin-left: 250px;
+      padding: 30px;
+      min-height: 100vh;
+      background-color: #f4f6f9;
+    }
+    .page-header {
+      margin-bottom: 30px;
+    }
+    .page-header h2 {
+      font-weight: 700;
+      color: #2c3b4e;
+    }
+    /* Form Styles */
+    .edit-admin-card {
+      background-color: #ffffff;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .edit-admin-card .form-group {
+      margin-bottom: 20px;
+    }
+    .edit-admin-card .form-group label {
+      font-weight: 500;
+      color: #2c3b4e;
+      margin-bottom: 5px;
+      display: block;
+    }
+    .edit-admin-card .form-control {
+      border-radius: 5px;
+      border: 1px solid #ced4da;
+      padding: 10px;
+      font-size: 1rem;
+      transition: border-color 0.3s;
+    }
+    .edit-admin-card .form-control:focus {
+      border-color: #2c3b4e;
+      box-shadow: 0 0 5px rgba(44, 59, 78, 0.2);
+    }
+    .edit-admin-card .password-wrapper {
+      position: relative;
+    }
+    .edit-admin-card .password-wrapper input[type="password"],
+    .edit-admin-card .password-wrapper input[type="text"] {
+      padding-right: 40px;
+    }
+    .edit-admin-card .password-wrapper .toggle-password {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      color: #666;
+      font-size: 1.2rem;
+    }
+    .edit-admin-card .form-check {
+      margin-bottom: 10px;
+    }
+    .edit-admin-card .form-check-label {
+      color: #2c3b4e;
+      font-weight: 400;
+    }
+    .edit-admin-card .btn-primary {
+      background-color: #2c3b4e;
+      border-color: #2c3b4e;
+      padding: 10px 20px;
+      font-weight: 500;
+      border-radius: 5px;
+      width: 100%;
+      transition: background-color 0.3s;
+    }
+    .edit-admin-card .btn-primary:hover {
+      background-color: #3b4a5a;
+      border-color: #3b4a5a;
+    }
+    .edit-admin-card .btn-secondary {
+      background-color: #e9ecef;
+      color: #2c3b4e;
+      border-color: #e9ecef;
+      padding: 10px 20px;
+      font-weight: 500;
+      border-radius: 5px;
+      width: 100%;
+      transition: background-color 0.3s;
+      margin-top: 10px;
+    }
+    .edit-admin-card .btn-secondary:hover {
+      background-color: #d3d7da;
+      border-color: #d3d7da;
+    }
+    /* Validation Errors and Messages */
+    .alert {
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 200px;
+        transform: translateX(-200px);
+      }
+      .sidebar.active {
+        transform: translateX(0);
+      }
+      .main-content {
+        margin-left: 0;
+      }
+      .sidebar-toggle {
+        display: block;
+        position: fixed;
+        top: 15px;
+        left: 15px;
+        font-size: 1.5rem;
+        color: #2c3b4e;
+        cursor: pointer;
+        z-index: 1000;
+      }
+      .edit-admin-card {
+        padding: 20px;
+      }
+      .edit-admin-card .form-check {
+        margin-right: 10px;
+      }
+    }
+    @media (min-width: 769px) {
+      .sidebar-toggle {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Sidebar Toggle for Mobile -->
+  <i class="fas fa-bars sidebar-toggle"></i>
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <a class="navbar-brand" href="/dashboard">Badi Parking System</a>
+    <ul class="nav flex-column">
+      <% if (user) { %>
+        <% if (user.permissions.entry || user.username === 'superadmin') { %>
+          <li class="nav-item">
+            <a class="nav-link" href="/entry"><i class="fas fa-sign-in-alt"></i> Entry</a>
+          </li>
+        <% } %>
+        <% if (user.permissions.exit || user.username === 'superadmin') { %>
+          <li class="nav-item">
+            <a class="nav-link" href="/exit"><i class="fas fa-sign-out-alt"></i> Exit</a>
+          </li>
+        <% } %>
+        <% if (user.permissions.manage || user.username === 'superadmin') { %>
+          <li class="nav-item">
+            <a class="nav-link" href="/manage"><i class="fas fa-cogs"></i> Manage</a>
+          </li>
+        <% } %>
+        <% if (user.permissions.profile || user.username === 'superadmin') { %>
+          <li class="nav-item">
+            <a class="nav-link" href="/profile"><i class="fas fa-user"></i> Profile</a>
+          </li>
+        <% } %>
+        <% if (user.permissions.add_admin || user.username === 'superadmin') { %>
+          <li class="nav-item">
+            <a class="nav-link" href="/add-admin"><i class="fas fa-user-plus"></i> Add Admin</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link active" href="/manage-admins"><i class="fas fa-users-cog"></i> Manage Admins</a>
+          </li>
+        <% } %>
+        <li class="nav-item">
+          <a class="nav-link" href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </li>
+      <% } %>
+    </ul>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="page-header">
+      <h2>Edit Admin</h2>
+    </div>
+
+    <% if (error) { %>
+      <div class="alert alert-danger text-center"><%= error %></div>
+    <% } %>
+    <% if (success) { %>
+      <div class="alert alert-success text-center"><%= success %></div>
+    <% } %>
+
+    <!-- Edit Admin Form -->
+    <div class="edit-admin-card">
+      <% if (!admin) { %>
+        <div class="alert alert-danger text-center">Admin not found.</div>
+      <% } else { %>
+        <form action="/manage-admins/edit/<%= admin.id %>" method="POST">
+          <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" class="form-control" id="username" name="username" value="<%= admin.username %>" required>
+          </div>
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" class="form-control" id="email" name="email" value="<%= admin.email %>" required>
+          </div>
+          <div class="form-group">
+            <label for="password">New Password (Required)</label>
+            <div class="password-wrapper">
+              <input type="password" class="form-control" id="password" name="password" value="<%= admin.plaintext_password || 'Password not available' %>" required>
+              <i class="bi bi-eye-slash toggle-password" id="togglePassword"></i>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Permissions</label>
+            <div class="form-check">
+              <input type="checkbox" class="form-check-input" id="can_entry" name="can_entry" <%= admin.permissions.entry ? 'checked' : '' %>>
+              <label class="form-check-label" for="can_entry">Can Entry</label>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" class="form-check-input" id="can_exit" name="can_exit" <%= admin.permissions.exit ? 'checked' : '' %>>
+              <label class="form-check-label" for="can_exit">Can Exit</label>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" class="form-check-input" id="can_manage" name="can_manage" <%= admin.permissions.manage ? 'checked' : '' %>>
+              <label class="form-check-label" for="can_manage">Can Manage</label>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" class="form-check-input" id="can_profile" name="can_profile" <%= admin.permissions.profile ? 'checked' : '' %>>
+              <label class="form-check-label" for="can_profile">Can Profile</label>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Update Admin</button>
+          <a href="/manage-admins" class="btn btn-secondary">Cancel</a>
+          <% if (validationErrors && validationErrors.length > 0) { %>
+            <div class="alert alert-danger mt-2">
+              <% validationErrors.forEach(error => { %>
+                <p><%= error %></p>
+              <% }) %>
+            </div>
+          <% } %>
+        </form>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-dark text-white text-center py-3 mt-4" style="position: fixed; bottom: 0; width: calc(100% - 250px); margin-left: 250px;">
+    <p>© <%= new Date().getFullYear() %> Badi Parking Management System. All rights reserved.</p>
+  </footer>
+
+  <!-- Bootstrap JS and Sidebar Toggle Script -->
+  <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    $(document).ready(function() {
+      $('.sidebar-toggle').click(function() {
+        $('.sidebar').toggleClass('active');
+      });
+
+      // JavaScript to toggle password visibility
+      $('#togglePassword').click(function() {
+        const passwordField = $('#password');
+        const icon = $(this);
+        if (passwordField.attr('type') === 'password') {
+          passwordField.attr('type', 'text');
+          icon.removeClass('bi-eye-slash').addClass('bi-eye');
+        } else {
+          passwordField.attr('type', 'password');
+          icon.removeClass('bi-eye').addClass('bi-eye-slash');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
