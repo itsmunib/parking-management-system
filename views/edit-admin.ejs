@@ -11,14 +11,31 @@
   .form-group label {
     font-weight: bold;
   }
-  .checkbox-group {
-    margin-top: 10px;
+  .password-wrapper {
+    position: relative;
+  }
+  .password-wrapper input[type="password"],
+  .password-wrapper input[type="text"] {
+    padding-right: 40px; /* Space for the eye icon */
+  }
+  .password-wrapper .toggle-password {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #666;
   }
 </style>
+<!-- Include Bootstrap Icons CDN -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <h2 class="text-center mb-4">Edit Admin</h2>
 <div class="edit-admin-container">
   <% if (error) { %>
     <div class="alert alert-danger text-center"><%= error %></div>
+  <% } %>
+  <% if (success) { %>
+    <div class="alert alert-success text-center"><%= success %></div>
   <% } %>
   <% if (!admin) { %>
     <div class="alert alert-danger text-center">Admin not found.</div>
@@ -34,24 +51,27 @@
       </div>
       <div class="form-group">
         <label for="password">New Password (required):</label>
-        <input type="password" class="form-control" id="password" name="password" value="<%= admin.plaintext_password || '' %>" required>
+        <div class="password-wrapper">
+          <input type="password" class="form-control" id="password" name="password" value="<%= admin.plaintext_password %>" required>
+          <i class="bi bi-eye-slash toggle-password" id="togglePassword"></i>
+        </div>
       </div>
-      <div class="form-group checkbox-group">
-        <label>Permissions:</label><br>
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" id="can_entry" name="can_entry" <%= admin.permissions.entry ? 'checked' : '' %>>
+      <div class="form-group">
+        <label>Permissions:</label>
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" id="can_entry" name="can_entry" <%= admin.permissions.entry ? 'checked' : '' %>>
           <label class="form-check-label" for="can_entry">Can Entry</label>
         </div>
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" id="can_exit" name="can_exit" <%= admin.permissions.exit ? 'checked' : '' %>>
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" id="can_exit" name="can_exit" <%= admin.permissions.exit ? 'checked' : '' %>>
           <label class="form-check-label" for="can_exit">Can Exit</label>
         </div>
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" id="can_manage" name="can_manage" <%= admin.permissions.manage ? 'checked' : '' %>>
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" id="can_manage" name="can_manage" <%= admin.permissions.manage ? 'checked' : '' %>>
           <label class="form-check-label" for="can_manage">Can Manage</label>
         </div>
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" id="can_profile" name="can_profile" <%= admin.permissions.profile ? 'checked' : '' %>>
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" id="can_profile" name="can_profile" <%= admin.permissions.profile ? 'checked' : '' %>>
           <label class="form-check-label" for="can_profile">Can Profile</label>
         </div>
       </div>
@@ -67,4 +87,20 @@
     </form>
   <% } %>
 </div>
+<script>
+  // JavaScript to toggle password visibility
+  document.getElementById('togglePassword').addEventListener('click', function () {
+    const passwordField = document.getElementById('password');
+    const icon = this;
+    if (passwordField.type === 'password') {
+      passwordField.type = 'text';
+      icon.classList.remove('bi-eye-slash');
+      icon.classList.add('bi-eye');
+    } else {
+      passwordField.type = 'password';
+      icon.classList.remove('bi-eye');
+      icon.classList.add('bi-eye-slash');
+    }
+  });
+</script>
 <%- include('partials/footer') %>

@@ -1808,11 +1808,13 @@ app.get('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'), 
       }
     }
     adminToEdit.permissions = parsedPermissions;
+    // Use the session's plaintext_password if available, otherwise indicate it's not set
+    adminToEdit.plaintext_password = adminToEdit.plaintext_password || user.plaintext_password || '';
     console.log('Rendering edit-admin with details:', {
       id: adminToEdit.id,
       username: adminToEdit.username,
       email: adminToEdit.email,
-      plaintext_password: adminToEdit.plaintext_password,
+      plaintext_password: adminToEdit.plaintext_password ? '[REDACTED]' : 'Not set',
       permissions: adminToEdit.permissions
     });
     res.render('edit-admin', { admin: adminToEdit, error: null, success: null, validationErrors: [], user });
