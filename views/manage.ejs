@@ -87,7 +87,7 @@
             <td><%= category.name %></td>
             <td><%= category.spaces_per_vehicle %></td>
             <td><%= category.pricing_type.charAt(0).toUpperCase() + category.pricing_type.slice(1) %></td>
-            <td>$<%= category.price.toFixed(2) %></td>
+            <td>PRK <%= category.price.toFixed(2) %></td>
             <td>
               <a href="/manage/edit/<%= category.id %>" class="btn btn-sm btn-primary">Edit</a>
               <form action="/manage/delete/<%= category.id %>" method="POST" style="display:inline;">

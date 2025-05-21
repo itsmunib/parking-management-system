@@ -1817,7 +1817,7 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
         <p><strong>Category:</strong> ${entry[0].category}</p>
         <p><strong>Entry Time:</strong> ${entryTime}</p>
         <p><strong>Exit Time:</strong> ${exitTimeFormatted}</p>
-        <p><strong>Total Cost:</strong> $${cost.toFixed(2)}</p>
+        <p><strong>Total Cost:</strong> ${cost.toFixed(2)} PKR</p>
         <p><strong>Processed By:</strong> ${user.username}</p>
       </div>
     `;

@@ -33,7 +33,7 @@
       <div class="card text-center">
         <div class="card-body">
           <h5 class="card-title">Earnings</h5>
-          <p class="card-text text-center" id="earnings">$<%= (Number(earnings) || 0).toFixed(2) %></p>
+          <p class="card-text text-center" id="earnings">PKR<%= (Number(earnings) || 0).toFixed(2) %></p>
         </div>
       </div>
     </div>
@@ -124,7 +124,7 @@
     data: {
       labels: <%- JSON.stringify(chartLabels) %>,
       datasets: [{
-        label: 'Earnings ($)',
+        label: 'Earnings (PRK )',
         data: <%- JSON.stringify(earningsData) %>,
         borderColor: '#28a745',
         backgroundColor: 'rgba(40, 167, 69, 0.1)',
@@ -139,7 +139,7 @@
           beginAtZero: true,
           title: {
             display: true,
-            text: 'Earnings ($)'
+            text: 'Earnings (PRK)'
           }
         },
         x: {
