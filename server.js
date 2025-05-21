@@ -1073,12 +1073,12 @@ app.post('/public/park', async (req, res) => {
         </div>
       `;
 
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="entry_ticket_${number_plate}_${Date.now()}.pdf"`);
+      // Serve as HTML, let client-side script handle PDF generation
       res.send(`
         <!DOCTYPE html>
         <html>
         <head>
+          <title>Entry Ticket</title>
           <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
         </head>
         <body>
@@ -1428,7 +1428,7 @@ app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => 
   const phoneError = validatePhone(phone);
 
   let categoryError = null;
-  const [categoryCheck] = await db.pool.query('SELECT id, spaces_per_vehicle FROM vehicle_categories WHERE id = ?', [category_id]);
+  const [categoryCheck] = await db.pool.query('SELECT id, spaces_per_vehicle, name FROM vehicle_categories WHERE id = ?', [category_id]);
   const [lot] = await db.pool.query('SELECT total_spaces, used_spaces FROM parking_lot WHERE id = 1');
   if (categoryCheck.length === 0) {
     categoryError = 'Selected category does not exist';
@@ -1502,7 +1502,42 @@ app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => 
       await connection.commit();
       connection.release();
 
-      res.redirect('/dashboard');
+      // Fetch the newly created entry to get the entry_time
+      const [newEntry] = await db.pool.query('SELECT entry_time FROM entries WHERE id = ?', [entryResult.insertId]);
+      const entryTime = new Date(newEntry[0].entry_time).toLocaleString();
+
+      // Generate the receipt content
+      const receiptContent = `
+        <div style="text-align: center; font-family: Arial, sans-serif; padding: 20px;">
+          <h2>Parking System</h2>
+          <h4>Entry Receipt</h4>
+          <p><strong>Vehicle Number:</strong> ${number_plate}</p>
+          <p><strong>Category:</strong> ${categoryCheck[0].name}</p>
+          <p><strong>Owner Name:</strong> ${owner_name || 'N/A'}</p>
+          <p><strong>Phone:</strong> ${phone || 'N/A'}</p>
+          <p><strong>Entry Time:</strong> ${entryTime}</p>
+          <p><strong>Added By:</strong> ${user.username}</p>
+        </div>
+      `;
+
+      // Serve as HTML, let client-side script handle PDF generation
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Entry Receipt</title>
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+        </head>
+        <body>
+          <div id="receipt">${receiptContent}</div>
+          <script>
+            const element = document.getElementById('receipt');
+            html2pdf().from(element).save('entry_receipt_${number_plate}_${Date.now()}.pdf');
+            setTimeout(() => { window.location.href = '/dashboard'; }, 1000);
+          </script>
+        </body>
+        </html>
+      `);
     } catch (err) {
       await connection.rollback();
       connection.release();
@@ -1566,7 +1601,7 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
     console.log('Dashboard stats before exit:', { parked: parkedBefore[0].count, earnings: earningsBefore[0].total });
 
     const [entry] = await db.pool.query(
-      'SELECT e.entry_time, e.number_plate, e.category_id, vc.pricing_type, vc.price, vc.spaces_per_vehicle ' +
+      'SELECT e.entry_time, e.number_plate, e.category_id, vc.pricing_type, vc.price, vc.spaces_per_vehicle, vc.name as category ' +
       'FROM entries e JOIN vehicle_categories vc ON e.category_id = vc.id ' +
       'WHERE e.id = ?',
       [entry_id]
@@ -1577,11 +1612,12 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
       return res.status(404).send('Entry not found');
     }
 
-    const entryTime = new Date(entry[0].entry_time);
+    const entryTime = new Date(entry[0].entry_time).toLocaleString();
     const exitTime = new Date();
+    const exitTimeFormatted = exitTime.toLocaleString();
     let cost = 0;
     if (entry[0].pricing_type === 'hourly') {
-      const hours = Math.ceil((exitTime - entryTime) / (1000 * 60 * 60));
+      const hours = Math.ceil((exitTime - new Date(entry[0].entry_time)) / (1000 * 60 * 60));
       cost = hours * (parseFloat(entry[0].price) || 0);
     } else {
       cost = parseFloat(entry[0].price) || 0;
@@ -1648,24 +1684,35 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
       await webPush.sendNotification(req.session.subscription, payload);
     }
 
+    // Generate the receipt content
+    const receiptContent = `
+      <div style="text-align: center; font-family: Arial, sans-serif; padding: 20px;">
+        <h2>Parking System</h2>
+        <h4>Exit Receipt</h4>
+        <p><strong>Vehicle Number:</strong> ${entry[0].number_plate}</p>
+        <p><strong>Category:</strong> ${entry[0].category}</p>
+        <p><strong>Entry Time:</strong> ${entryTime}</p>
+        <p><strong>Exit Time:</strong> ${exitTimeFormatted}</p>
+        <p><strong>Total Cost:</strong> $${cost.toFixed(2)}</p>
+        <p><strong>Processed By:</strong> ${user.username}</p>
+      </div>
+    `;
+
+    // Serve as HTML, let client-side script handle PDF generation
     res.send(`
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Exit Processed</title>
-        <meta http-equiv="refresh" content="0;url=/dashboard?hardrefresh=${Date.now()}">
-        <meta http-equiv="cache-control" content="no-store, no-cache, must-revalidate">
-        <meta http-equiv="pragma" content="no-cache">
-        <meta http-equiv="expires" content="0">
-        <script>
-          localStorage.clear();
-          sessionStorage.clear();
-          window.location.href = '/dashboard?hardrefresh=${Date.now()}';
-          window.location.reload(true);
-        </script>
+        <title>Exit Receipt</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
       </head>
       <body>
-        <p>Exit processed. Redirecting to dashboard...</p>
+        <div id="receipt">${receiptContent}</div>
+        <script>
+          const element = document.getElementById('receipt');
+          html2pdf().from(element).save('exit_receipt_${entry[0].number_plate}_${Date.now()}.pdf');
+          setTimeout(() => { window.location.href = '/dashboard?hardrefresh=${Date.now()}'; }, 1000);
+        </script>
       </body>
       </html>
     `);
