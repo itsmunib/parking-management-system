@@ -313,10 +313,13 @@ app.post('/login', async (req, res) => {
           rows[0].permissions = JSON.parse(rows[0].permissions);
         }
         console.log('Parsed permissions:', rows[0].permissions);
-        // Store the plaintext password temporarily in the session
+        // Store the plaintext password in the session and database
         rows[0].plaintext_password = password;
         req.session.admin = rows[0];
         console.log('Session admin set:', req.session.admin);
+        // Update the plaintext_password in the database
+        await db.pool.query('UPDATE admins SET plaintext_password = ? WHERE id = ?', [password, rows[0].id]);
+        console.log('Updated plaintext_password in database for user:', username);
         // Explicitly save the session before redirecting
         req.session.save(err => {
           if (err) {
@@ -1121,16 +1124,64 @@ app.post('/public/park', async (req, res) => {
 // Profile Routes
 // Profile Routes
 // Profile Routes
-app.get('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
-  console.log('GET /profile');
+
+app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
+  console.log('POST /profile');
   console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
+  const user = req.session.admin;
+  const { username, email, password } = req.body;
+  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
+
+  const validationErrors = [];
+  const usernameError = validateUsername(username);
+  const emailError = validateEmail(email);
+  let passwordError = null;
+  if (password) {
+    passwordError = validatePassword(password);
+  }
+
+  if (usernameError) validationErrors.push(usernameError);
+  if (emailError) validationErrors.push(emailError);
+  if (passwordError) validationErrors.push(passwordError);
+
+  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
+  if (duplicateUsername.length > 0) {
+    validationErrors.push('Username already exists');
+  }
+  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
+  if (duplicateEmail.length > 0) {
+    validationErrors.push('Email already exists');
+  }
+
+  if (validationErrors.length > 0) {
+    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
+  }
+
   try {
-    const user = req.session.admin;
-    res.render('profile', { admin: user, error: null, success: null, validationErrors: [], user });
+    let hashedPassword = user.password;
+    let plaintextPassword = user.plaintext_password;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+      plaintextPassword = password;
+    }
+
+    await db.pool.query(
+      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
+      [username, email, hashedPassword, plaintextPassword, user.id]
+    );
+
+    // Refresh the session with updated admin data
+    const [updatedAdmin] = await db.pool.query('SELECT * FROM admins WHERE id = ?', [user.id]);
+    req.session.admin = updatedAdmin[0];
+    if (typeof req.session.admin.permissions === 'string') {
+      req.session.admin.permissions = JSON.parse(req.session.admin.permissions);
+    }
+
+    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
   } catch (err) {
-    console.error('Profile error:', err);
-    fs.writeFileSync('server.log', `Profile error: ${err}\n`, { flag: 'a' });
-    res.render('profile', { admin: req.session.admin, error: 'Server error: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
+    console.error('Update profile error:', err);
+    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
+    res.render('profile', { admin: req.session.admin, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
   }
 });
 
@@ -1876,10 +1927,10 @@ app.post('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'),
   const user = req.session.admin;
   const { id } = req.params;
   const { username, email, password, can_entry, can_exit, can_manage, can_profile } = req.body;
-  console.log('POST /manage-admins/edit/:id:', { id, username, email, password, can_entry, can_exit, can_manage, can_profile });
+  console.log('POST /manage-admins/edit/:id:', { id, username, email, password: password ? '[REDACTED]' : 'Not provided', can_entry, can_exit, can_manage, can_profile });
 
   try {
-    const [admins] = await db.pool.query('SELECT id, username, email, permissions, password, plaintext_password FROM admins WHERE id = ? AND username != ?', [id, user.username]);
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions, password FROM admins WHERE id = ? AND username != ?', [id, user.username]);
     if (admins.length === 0) {
       return res.render('edit-admin', { admin: null, error: 'Admin not found', success: null, validationErrors: [], user });
     }
@@ -1888,11 +1939,15 @@ app.post('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'),
     const validationErrors = [];
     const usernameError = validateUsername(username);
     const emailError = validateEmail(email);
-    const passwordError = validatePassword(password);
+    if (password) { // Only validate password if provided
+      const passwordError = validatePassword(password);
+      if (passwordError) validationErrors.push(passwordError);
+    } else {
+      validationErrors.push('Password is required');
+    }
 
     if (usernameError) validationErrors.push(usernameError);
     if (emailError) validationErrors.push(emailError);
-    if (passwordError) validationErrors.push(passwordError);
 
     const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, id]);
     if (duplicateUsername.length > 0) {
@@ -1924,19 +1979,15 @@ app.post('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'),
     };
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    console.log('Saving hashed password:', hashedPassword);
-    
-    // Check if username or password has changed
-    const usernameChanged = username !== adminToEdit.username;
-    const passwordChanged = password !== adminToEdit.plaintext_password;
-
     await db.pool.query(
-      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = NULL, permissions = ? WHERE id = ?',
-      [username, email, hashedPassword, JSON.stringify(permissions), id]
+      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ?, permissions = ? WHERE id = ?',
+      [username, email, hashedPassword, password, JSON.stringify(permissions), id]
     );
     console.log('Admin details updated:', { id, username, email, permissions });
 
     // If username or password has changed, invalidate all sessions for the admin
+    const usernameChanged = username !== adminToEdit.username;
+    const passwordChanged = !(await bcrypt.compare(password, adminToEdit.password));
     if (usernameChanged || passwordChanged) {
       invalidateUserSessions(id, req.sessionID);
       console.log(`Invalidated sessions for admin with ID ${id} due to ${usernameChanged ? 'username' : ''}${usernameChanged && passwordChanged ? ' and ' : ''}${passwordChanged ? 'password' : ''} change`);

@@ -52,7 +52,7 @@
       <div class="form-group">
         <label for="password">New Password (required):</label>
         <div class="password-wrapper">
-          <input type="password" class="form-control" id="password" name="password" value="<%= admin.plaintext_password %>" required>
+          <input type="password" class="form-control" id="password" name="password" value="<%= admin.plaintext_password || 'Password not available' %>" required>
           <i class="bi bi-eye-slash toggle-password" id="togglePassword"></i>
         </div>
       </div>
