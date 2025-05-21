@@ -8,13 +8,6 @@
   .admins-table {
     margin-top: 20px;
   }
-  .filter-buttons {
-    margin-bottom: 20px;
-    text-align: center;
-  }
-  .filter-buttons .btn {
-    margin: 0 5px;
-  }
 </style>
 <h2 class="text-center mb-4">Manage Admins</h2>
 <div class="manage-admins-container">
@@ -24,19 +17,12 @@
   <% if (success) { %>
     <div class="alert alert-success text-center"><%= success %></div>
   <% } %>
-  <!-- Filter Buttons -->
-  <div class="filter-buttons">
-    <a href="/manage-admins?filter=today" class="btn <%= filter === 'today' ? 'btn-primary' : 'btn-secondary' %>">Today</a>
-    <a href="/manage-admins?filter=weekly" class="btn <%= filter === 'weekly' ? 'btn-primary' : 'btn-secondary' %>">Weekly</a>
-    <a href="/manage-admins?filter=monthly" class="btn <%= filter === 'monthly' ? 'btn-primary' : 'btn-secondary' %>">Monthly</a>
-  </div>
   <!-- Admins Table -->
   <table class="table table-bordered admins-table">
     <thead>
       <tr>
         <th>Username</th>
         <th>Email</th>
-        <th>Permissions</th>
         <th>Actions</th>
       </tr>
     </thead>
@@ -46,16 +32,15 @@
           <tr>
             <td><%= admin.username %></td>
             <td><%= admin.email %></td>
-            <td><%= JSON.stringify(admin.permissions) %></td>
             <td>
               <a href="/manage-admins/edit/<%= admin.id %>" class="btn btn-sm btn-primary">Edit</a>
-              <a href="/manage-admins/confirm-delete/<%= admin.id %>?filter=<%= filter %>" class="btn btn-sm btn-danger">Delete</a>
+              <a href="/manage-admins/confirm-delete/<%= admin.id %>" class="btn btn-sm btn-danger">Delete</a>
             </td>
           </tr>
         <% }) %>
       <% } else { %>
         <tr>
-          <td colspan="4" class="text-center">No admins found.</td>
+          <td colspan="3" class="text-center">No admins found.</td>
         </tr>
       <% } %>
     </tbody>

@@ -50,6 +50,10 @@
           <input class="form-check-input" type="checkbox" id="can_manage" name="can_manage" <%= admin.permissions.manage ? 'checked' : '' %>>
           <label class="form-check-label" for="can_manage">Can Manage</label>
         </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="can_profile" name="can_profile" <%= admin.permissions.profile ? 'checked' : '' %>>
+          <label class="form-check-label" for="can_profile">Can Profile</label>
+        </div>
       </div>
       <button type="submit" class="btn btn-primary btn-block">Update Admin</button>
       <a href="/manage-admins" class="btn btn-secondary btn-block mt-2">Cancel</a>

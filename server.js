@@ -5,6 +5,7 @@ const db = require('./db');
 const path = require('path');
 const fs = require('fs');
 const webPush = require('web-push');
+const activeSessions = new Map(); // Map<userId, Set<sessionId>>
 require('dotenv').config();
 
 const app = express();
@@ -33,24 +34,127 @@ app.use(
     secret: process.env.SESSION_SECRET || 'default-session-secret',
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: process.env.NODE_ENV === 'production' }
+    cookie: { 
+      secure: process.env.NODE_ENV === 'production', // Use secure cookies in production (requires HTTPS)
+      httpOnly: true, // Prevent client-side access to cookies
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
   })
 );
 
-// Authentication middleware
-const isAuthenticated = (req, res, next) => {
-  if (req.session.admin) {
-    if (typeof req.session.admin.permissions === 'string') {
-      try {
-        req.session.admin.permissions = JSON.parse(req.session.admin.permissions);
-      } catch (err) {
-        console.error('Error parsing permissions:', err);
-        req.session.admin.permissions = {};
-      }
+app.use((req, res, next) => {
+  if (req.session && req.session.admin && req.session.admin.id) {
+    const userId = req.session.admin.id.toString();
+    const sessionId = req.sessionID;
+    if (!activeSessions.has(userId)) {
+      activeSessions.set(userId, new Set());
     }
-    console.log('Authenticated user:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
-    next();
+    activeSessions.get(userId).add(sessionId);
+    // Clean up on session destroy
+    res.on('finish', () => {
+      if (req.session && req.session.destroyed) {
+        activeSessions.get(userId)?.delete(sessionId);
+        if (activeSessions.get(userId)?.size === 0) {
+          activeSessions.delete(userId);
+        }
+      }
+    });
+  }
+  next();
+});
+
+// Authentication middleware
+const isAuthenticated = async (req, res, next) => {
+  console.log('isAuthenticated middleware called', { sessionAdmin: req.session.admin, sessionId: req.sessionID });
+  if (req.session.admin) {
+    try {
+      const userId = req.session.admin.id.toString();
+      const sessionId = req.sessionID;
+      console.log('Checking session validity:', { userId, sessionId, activeSessionsForUser: activeSessions.has(userId) ? Array.from(activeSessions.get(userId)) : null });
+      // Check if this session is still valid
+      if (activeSessions.has(userId) && activeSessions.get(userId).has(sessionId)) {
+        // Fetch the latest admin data from the database
+        const [admins] = await db.pool.query('SELECT * FROM admins WHERE id = ?', [req.session.admin.id]);
+        console.log('Fetched admin from database:', admins);
+        if (admins.length === 0) {
+          console.log('Admin no longer exists, destroying session');
+          req.session.destroy(err => {
+            if (err) {
+              console.error('Error destroying session:', err);
+            }
+            activeSessions.get(userId)?.delete(sessionId);
+            if (activeSessions.get(userId)?.size === 0) {
+              activeSessions.delete(userId);
+            }
+            res.redirect('/login');
+          });
+          return;
+        }
+
+        const admin = admins[0];
+        // Check if username or password has changed
+        const usernameMatches = admin.username === req.session.admin.username;
+        let passwordMatches = true; // Default to true to avoid immediate invalidation after login
+        if (req.session.admin.plaintext_password) {
+          // If plaintext_password exists in the session, verify it against the database
+          passwordMatches = await bcrypt.compare(req.session.admin.plaintext_password, admin.password);
+        } else {
+          // If plaintext_password is not set, assume credentials are invalid
+          passwordMatches = false;
+        }
+        console.log('Credential check:', { usernameMatches, passwordMatches });
+        if (!usernameMatches || !passwordMatches) {
+          console.log(`Session invalidated for admin ID ${userId} due to ${!usernameMatches ? 'username' : ''}${!usernameMatches && !passwordMatches ? ' and ' : ''}${!passwordMatches ? 'password' : ''} change`);
+          req.session.destroy(err => {
+            if (err) {
+              console.error('Error destroying session:', err);
+            }
+            activeSessions.get(userId)?.delete(sessionId);
+            if (activeSessions.get(userId)?.size === 0) {
+              activeSessions.delete(userId);
+            }
+            res.redirect('/login');
+          });
+          return;
+        }
+
+        // Update the session with the latest admin data, but preserve plaintext_password
+        const plaintextPassword = req.session.admin.plaintext_password;
+        req.session.admin = admin;
+        req.session.admin.plaintext_password = plaintextPassword;
+        if (typeof req.session.admin.permissions === 'string') {
+          try {
+            req.session.admin.permissions = JSON.parse(req.session.admin.permissions);
+          } catch (err) {
+            console.error('Error parsing permissions:', err);
+            req.session.admin.permissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
+          }
+        } else if (!req.session.admin.permissions) {
+          req.session.admin.permissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
+        }
+        console.log('Authenticated user:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
+        next();
+      } else {
+        console.log('Session not found in activeSessions, destroying session');
+        req.session.destroy(err => {
+          if (err) {
+            console.error('Error destroying session:', err);
+          }
+          res.redirect('/login');
+        });
+      }
+    } catch (err) {
+      console.error('Error in isAuthenticated middleware:', err);
+      fs.writeFileSync('server.log', `Error in isAuthenticated middleware: ${err}\n`, { flag: 'a' });
+      req.session.destroy(err => {
+        if (err) {
+          console.error('Error destroying session:', err);
+        }
+        res.redirect('/login');
+      });
+    }
   } else {
+    console.log('No admin session found, redirecting to login');
     res.redirect('/login');
   }
 };
@@ -60,11 +164,35 @@ const hasPermission = (permission) => (req, res, next) => {
   const user = req.session.admin;
   const permissions = user.permissions || {};
   console.log('Checking permission:', { user: user.username, permission, permissions });
+
+  // Allow super admin to access all routes regardless of permissions
+  if (user.username === 'superadmin') {
+    console.log('Super admin access granted for:', { user: user.username, permission });
+    next();
+    return;
+  }
+
+  // Enforce permission check for other users
   if (permissions[permission] === true) {
     next();
   } else {
     console.log('Permission denied, redirecting to /dashboard');
     res.redirect('/dashboard');
+  }
+};
+
+const invalidateUserSessions = (userId, currentSessionId) => {
+  userId = userId.toString();
+  if (activeSessions.has(userId)) {
+    const sessionIds = activeSessions.get(userId);
+    sessionIds.forEach(sessionId => {
+      if (sessionId !== currentSessionId) { // Don't invalidate the super admin's session
+        sessionIds.delete(sessionId);
+      }
+    });
+    if (sessionIds.size === 0) {
+      activeSessions.delete(userId);
+    }
   }
 };
 
@@ -185,9 +313,20 @@ app.post('/login', async (req, res) => {
           rows[0].permissions = JSON.parse(rows[0].permissions);
         }
         console.log('Parsed permissions:', rows[0].permissions);
+        // Store the plaintext password temporarily in the session
+        rows[0].plaintext_password = password;
         req.session.admin = rows[0];
         console.log('Session admin set:', req.session.admin);
-        res.redirect('/');
+        // Explicitly save the session before redirecting
+        req.session.save(err => {
+          if (err) {
+            console.error('Error saving session:', err);
+            fs.writeFileSync('server.log', `Error saving session: ${err}\n`, { flag: 'a' });
+            res.render('login', { error: 'Server error', success: null, user: null });
+          } else {
+            res.redirect('/');
+          }
+        });
       } else {
         console.log('Invalid credentials for:', username);
         res.render('login', { error: 'Invalid credentials', success: null, user: null });
@@ -216,27 +355,37 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     const filter = req.query.filter || 'today';
     let days = 1;
     let dateCondition = '';
+
+    // Set today’s date in PKT
+    const today = new Date();
+    const todayPKT = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
+    const todayPKTDateStr = todayPKT.toISOString().split('T')[0]; // e.g., "2025-05-21"
+    console.log('Today’s date (PKT):', todayPKTDateStr);
+
+    // Adjust date condition using application time
     if (filter === 'weekly') {
       days = 7;
-      dateCondition = 'AND DATE(x.exit_time) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)';
+      dateCondition = `AND DATE(x.exit_time) >= DATE_SUB('${todayPKTDateStr}', INTERVAL 7 DAY)`;
     } else if (filter === 'monthly') {
       days = 30;
-      dateCondition = 'AND DATE(x.exit_time) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)';
+      dateCondition = `AND DATE(x.exit_time) >= DATE_SUB('${todayPKTDateStr}', INTERVAL 30 DAY)`;
     } else {
       days = 1;
-      dateCondition = 'AND DATE(x.exit_time) = CURDATE()';
+      dateCondition = `AND DATE(x.exit_time) = '${todayPKTDateStr}'`;
     }
 
+    // Fetch vehicle counts for the graph
     const [vehicleCounts] = await db.pool.query(
       `SELECT DATE(e.entry_time) as date, COUNT(*) as count 
        FROM entries e 
-       WHERE 1=1 ${filter === 'today' ? 'AND DATE(e.entry_time) = CURDATE()' : 'AND DATE(e.entry_time) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)'} 
+       WHERE 1=1 ${filter === 'today' ? `AND DATE(e.entry_time) = '${todayPKTDateStr}'` : `AND DATE(e.entry_time) >= DATE_SUB('${todayPKTDateStr}', INTERVAL ? DAY)`} 
        GROUP BY DATE(e.entry_time) 
        ORDER BY DATE(e.entry_time)`,
       [days]
     );
     console.log('Vehicle counts for chart:', vehicleCounts);
 
+    // Fetch earnings for the graph
     const [earningsPerDay] = await db.pool.query(
       `SELECT DATE(x.exit_time) as date, COALESCE(SUM(x.cost), 0) as total 
        FROM exits x 
@@ -246,20 +395,27 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     );
     console.log('Earnings per day for chart:', earningsPerDay);
 
+    // Fetch today's vehicle count
     const [vehicles] = await db.pool.query(
-      `SELECT COUNT(*) as count FROM entries WHERE DATE(entry_time) = CURDATE()`
+      `SELECT COUNT(*) as count FROM entries WHERE DATE(entry_time) = '${todayPKTDateStr}'`
     );
+
+    // Fetch earnings for the selected period
     const [earnings] = await db.pool.query(
       `SELECT COALESCE(SUM(x.cost), 0) as total 
        FROM exits x 
        WHERE 1=1 ${dateCondition}`
     );
+
+    // Fetch currently parked vehicles to calculate used spaces
     const [parkedVehicles] = await db.pool.query(
       `SELECT e.category_id, vc.spaces_per_vehicle 
        FROM entries e 
        JOIN vehicle_categories vc ON e.category_id = vc.id 
        WHERE e.id NOT IN (SELECT entry_id FROM exits)`
     );
+
+    // Fetch total spaces from parking lot
     const [lot] = await db.pool.query('SELECT total_spaces FROM parking_lot WHERE id = 1');
 
     const totalSpaces = lot.length > 0 ? Number(lot[0].total_spaces) || 0 : 0;
@@ -274,43 +430,25 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     const labels = [];
     const vehicleData = [];
     const earningsData = [];
-    const today = new Date();
-    const todayPKT = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
-    console.log('Today’s date (PKT):', todayPKT.toISOString().split('T')[0]);
-
-    const vehicleCountsPKT = vehicleCounts.map(v => {
-      const dateUTC = new Date(v.date);
-      const datePKT = new Date(dateUTC.getTime() + (5 * 60 * 60 * 1000));
-      return { ...v, date: datePKT };
-    });
-    console.log('Vehicle counts adjusted to PKT:', vehicleCountsPKT);
-
-    const earningsPerDayPKT = earningsPerDay.map(e => {
-      const dateUTC = new Date(e.date);
-      const datePKT = new Date(dateUTC.getTime() + (5 * 60 * 60 * 1000));
-      return { ...e, date: datePKT };
-    });
-    console.log('Earnings per day adjusted to PKT:', earningsPerDayPKT);
 
     if (filter === 'today') {
-      const dateStr = todayPKT.toISOString().split('T')[0];
-      labels.push(dateStr);
+      labels.push(todayPKTDateStr);
 
-      const vehicleEntry = vehicleCountsPKT.find(v => {
+      const vehicleEntry = vehicleCounts.find(v => {
         const entryDateStr = v.date ? v.date.toISOString().split('T')[0] : null;
-        console.log('Comparing vehicle date:', { entryDateStr, dateStr });
-        return entryDateStr === dateStr;
+        console.log('Comparing vehicle date:', { entryDateStr, dateStr: todayPKTDateStr });
+        return entryDateStr === todayPKTDateStr;
       });
-      vehicleData.push(vehicleEntry ? vehicleEntry.count : vehicles[0].count || 0);
+      vehicleData.push(vehicleEntry ? vehicleEntry.count : 0);
+      console.log('Vehicle data for today:', vehicleData);
 
-      const earningEntry = earningsPerDayPKT.find(e => {
+      const earningEntry = earningsPerDay.find(e => {
         const earningDateStr = e.date ? e.date.toISOString().split('T')[0] : null;
-        console.log('Comparing earning date:', { earningDateStr, dateStr });
-        return earningDateStr === dateStr;
+        console.log('Comparing earning date:', { earningDateStr, dateStr: todayPKTDateStr });
+        return earningDateStr === todayPKTDateStr;
       });
-      const earningsTotal = earnings[0] ? parseFloat(earnings[0].total) || 0 : 0;
-      console.log('Earnings fallback:', { earningEntry, earningsTotal });
-      earningsData.push(earningEntry ? Number(earningEntry.total) : earningsTotal);
+      earningsData.push(earningEntry ? Number(earningEntry.total) : 0);
+      console.log('Earnings data for today:', earningsData);
     } else {
       for (let i = 0; i < days; i++) {
         const date = new Date(todayPKT);
@@ -318,7 +456,7 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
         const dateStr = date.toISOString().split('T')[0];
         labels.push(dateStr);
 
-        const vehicleEntry = vehicleCountsPKT.find(v => {
+        const vehicleEntry = vehicleCounts.find(v => {
           const entryDateStr = v.date ? v.date.toISOString().split('T')[0] : null;
           console.log('Comparing vehicle date:', { entryDateStr, dateStr, index: i });
           return entryDateStr === dateStr;
@@ -327,7 +465,7 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
         vehicleData.push(vehicleValue);
         console.log('Vehicle data point:', { date: dateStr, index: i, value: vehicleValue });
 
-        const earningEntry = earningsPerDayPKT.find(e => {
+        const earningEntry = earningsPerDay.find(e => {
           const earningDateStr = e.date ? e.date.toISOString().split('T')[0] : null;
           console.log('Comparing earning date:', { earningDateStr, dateStr, index: i });
           return earningDateStr === dateStr;
@@ -485,6 +623,63 @@ app.post('/manage/set-lot-spaces', isAuthenticated, hasPermission('manage'), asy
       validationErrors: [], 
       user
     });
+  }
+});
+
+app.post('/manage-admins/delete/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
+  console.log('POST /manage-admins/delete/:id');
+  const user = req.session.admin;
+  const { id } = req.params;
+  try {
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE id = ? AND username != ?', [id, user.username]);
+    if (admins.length === 0) {
+      const [allAdmins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
+      const parsedAllAdmins = allAdmins.map(admin => {
+        let parsedPermissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
+        if (admin.permissions) {
+          try {
+            parsedPermissions = { ...parsedPermissions, ...JSON.parse(admin.permissions) };
+          } catch (err) {
+            console.error(`Error parsing permissions for admin ${admin.username}:`, err);
+          }
+        }
+        return { ...admin, permissions: parsedPermissions };
+      });
+      return res.render('manage-admins', { admins: parsedAllAdmins, error: 'Admin not found or cannot delete yourself', success: null, user });
+    }
+
+    await db.pool.query('DELETE FROM admins WHERE id = ?', [id]);
+    console.log('Admin deleted:', { id });
+
+    const [updatedAdmins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
+    const parsedUpdatedAdmins = updatedAdmins.map(admin => {
+      let parsedPermissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
+      if (admin.permissions) {
+        try {
+          parsedPermissions = { ...parsedPermissions, ...JSON.parse(admin.permissions) };
+        } catch (err) {
+          console.error(`Error parsing permissions for admin ${admin.username}:`, err);
+        }
+      }
+      return { ...admin, permissions: parsedPermissions };
+    });
+    res.render('manage-admins', { admins: parsedUpdatedAdmins, error: null, success: 'Admin deleted successfully', user });
+  } catch (err) {
+    console.error('Delete admin error:', err);
+    fs.writeFileSync('server.log', `Delete admin error: ${err}\n`, { flag: 'a' });
+    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
+    const parsedAdmins = admins.map(admin => {
+      let parsedPermissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
+      if (admin.permissions) {
+        try {
+          parsedPermissions = { ...parsedPermissions, ...JSON.parse(admin.permissions) };
+        } catch (err) {
+          console.error(`Error parsing permissions for admin ${admin.username}:`, err);
+        }
+      }
+      return { ...admin, permissions: parsedPermissions };
+    });
+    res.render('manage-admins', { admins: parsedAdmins, error: 'Failed to delete admin: ' + err.message, success: null, user });
   }
 });
 
@@ -771,20 +966,359 @@ app.post('/manage/delete/:id', isAuthenticated, hasPermission('manage'), async (
   }
 });
 
+// Public Routes
+app.get('/public', async (req, res) => {
+  console.log('GET /public');
+  try {
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const [lot] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
+    const formattedLot = lot.length > 0 ? {
+      total_spaces: Number(lot[0].total_spaces) || 0,
+      used_spaces: Number(lot[0].used_spaces) || 0
+    } : { total_spaces: 0, used_spaces: 0 };
+    const available = formattedLot.total_spaces - formattedLot.used_spaces;
+    const lotDetails = { categories, available, totalSpaces: formattedLot.total_spaces };
+    res.render('public-parking', { lots: [lotDetails], error: null, success: null, validationErrors: [], autofill: {}, user: null });
+  } catch (err) {
+    console.error('Public page error:', err);
+    fs.writeFileSync('server.log', `Public page error: ${err}\n`, { flag: 'a' });
+    res.render('public-parking', { lots: [], error: 'Server error', success: null, validationErrors: [], autofill: {}, user: null });
+  }
+});
+
+app.post('/public/park', async (req, res) => {
+  const { number_plate, owner_name, phone, category_id } = req.body;
+  console.log('POST /public/park:', { number_plate, owner_name, phone, category_id });
+
+  const validationErrors = [];
+  const plateError = validateNumberPlate(number_plate);
+  const ownerError = validateOwnerName(owner_name);
+  const phoneError = validatePhone(phone);
+
+  let categoryError = null;
+  const [categoryCheck] = await db.pool.query('SELECT id, spaces_per_vehicle FROM vehicle_categories WHERE id = ?', [category_id]);
+  const [lot] = await db.pool.query('SELECT total_spaces, used_spaces FROM parking_lot WHERE id = 1');
+  if (categoryCheck.length === 0) {
+    categoryError = 'Selected category does not exist';
+  } else if (lot.length === 0) {
+    categoryError = 'Parking lot configuration not found';
+  } else {
+    const spacesPerVehicle = Number(categoryCheck[0].spaces_per_vehicle) || 1;
+    const totalSpaces = Number(lot[0].total_spaces) || 0;
+    const usedSpaces = Number(lot[0].used_spaces) || 0;
+    const availableSpaces = totalSpaces - usedSpaces;
+    if (availableSpaces < spacesPerVehicle) {
+      categoryError = `Not enough spaces available in the lot. Required: ${spacesPerVehicle}, Available: ${availableSpaces}`;
+    }
+  }
+
+  if (plateError) validationErrors.push(plateError);
+  if (ownerError) validationErrors.push(ownerError);
+  if (phoneError) validationErrors.push(phoneError);
+  if (categoryError) validationErrors.push(categoryError);
+
+  if (validationErrors.length > 0) {
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const [lotData] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
+    const formattedLot = lotData.length > 0 ? {
+      total_spaces: Number(lotData[0].total_spaces) || 0,
+      used_spaces: Number(lotData[0].used_spaces) || 0
+    } : { total_spaces: 0, used_spaces: 0 };
+    const available = formattedLot.total_spaces - formattedLot.used_spaces;
+    const lotDetails = { categories, available, totalSpaces: formattedLot.total_spaces };
+    return res.render('public-parking', { 
+      lots: [lotDetails], 
+      error: null, 
+      success: null,
+      validationErrors,
+      autofill: { number_plate, owner_name, phone, category_id },
+      user: null
+    });
+  }
+
+  try {
+    const connection = await db.pool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const [entryResult] = await connection.query(
+        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
+        [number_plate, owner_name || null, phone || null, category_id]
+      );
+      const entryId = entryResult.insertId;
+
+      const spacesPerVehicle = Number(categoryCheck[0].spaces_per_vehicle) || 1;
+      await connection.query(
+        'UPDATE parking_lot SET used_spaces = used_spaces + ? WHERE id = 1',
+        [spacesPerVehicle]
+      );
+
+      await connection.commit();
+      connection.release();
+
+      if (req.session.subscription) {
+        const payload = JSON.stringify({
+          title: 'Vehicle Parked',
+          body: `Your vehicle ${number_plate} has been parked.`
+        });
+        await webPush.sendNotification(req.session.subscription, payload);
+      }
+
+      const ticketContent = `
+        <div style="text-align: center; font-family: Arial, sans-serif; padding: 20px;">
+          <h2>Parking System</h2>
+          <h4>Entry Ticket</h4>
+          <p><strong>Vehicle Number:</strong> ${number_plate}</p>
+          <p><strong>Entry Time:</strong> ${new Date().toLocaleString()}</p>
+        </div>
+      `;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="entry_ticket_${number_plate}_${Date.now()}.pdf"`);
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+        </head>
+        <body>
+          <div id="ticket">${ticketContent}</div>
+          <script>
+            const element = document.getElementById('ticket');
+            html2pdf().from(element).save('entry_ticket_${number_plate}_${Date.now()}.pdf');
+            setTimeout(() => { window.location.href = '/public'; }, 1000);
+          </script>
+        </body>
+        </html>
+      `);
+    } catch (err) {
+      await connection.rollback();
+      connection.release();
+      throw err;
+    }
+  } catch (err) {
+    console.error('Public park error:', err);
+    fs.writeFileSync('server.log', `Public park error: ${err}\n`, { flag: 'a' });
+    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
+    const [lotData] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
+    const formattedLot = lotData.length > 0 ? {
+      total_spaces: Number(lotData[0].total_spaces) || 0,
+      used_spaces: Number(lotData[0].used_spaces) || 0
+    } : { total_spaces: 0, used_spaces: 0 };
+    const available = formattedLot.total_spaces - formattedLot.used_spaces;
+    const lotDetails = { categories, available, totalSpaces: formattedLot.total_spaces };
+    res.render('public-parking', { 
+      lots: [lotDetails], 
+      error: 'Failed to park vehicle: ' + err.message, 
+      success: null,
+      validationErrors: [],
+      autofill: { number_plate, owner_name, phone, category_id },
+      user: null
+    });
+  }
+});
+
 // Profile Routes
-app.get('/profile', isAuthenticated, async (req, res) => {
+// Profile Routes
+// Profile Routes
+app.get('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
   console.log('GET /profile');
+  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
   try {
     const user = req.session.admin;
     res.render('profile', { admin: user, error: null, success: null, validationErrors: [], user });
   } catch (err) {
     console.error('Profile error:', err);
     fs.writeFileSync('server.log', `Profile error: ${err}\n`, { flag: 'a' });
-    res.render('profile', { admin: user, error: 'Server error: ' + err.message, success: null, validationErrors: [], user });
+    res.render('profile', { admin: req.session.admin, error: 'Server error: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
   }
 });
 
-app.post('/profile', isAuthenticated, async (req, res) => {
+app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
+  console.log('POST /profile');
+  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
+  const user = req.session.admin;
+  const { username, email, password } = req.body;
+  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
+
+  const validationErrors = [];
+  const usernameError = validateUsername(username);
+  const emailError = validateEmail(email);
+  let passwordError = null;
+  if (password) {
+    passwordError = validatePassword(password);
+  }
+
+  if (usernameError) validationErrors.push(usernameError);
+  if (emailError) validationErrors.push(emailError);
+  if (passwordError) validationErrors.push(passwordError);
+
+  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
+  if (duplicateUsername.length > 0) {
+    validationErrors.push('Username already exists');
+  }
+  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
+  if (duplicateEmail.length > 0) {
+    validationErrors.push('Email already exists');
+  }
+
+  if (validationErrors.length > 0) {
+    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
+  }
+
+  try {
+    let hashedPassword = user.password;
+    let plaintextPassword = user.plaintext_password;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+      plaintextPassword = password;
+    }
+
+    await db.pool.query(
+      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
+      [username, email, hashedPassword, plaintextPassword, user.id]
+    );
+
+    // Refresh the session with updated admin data
+    const [updatedAdmin] = await db.pool.query('SELECT * FROM admins WHERE id = ?', [user.id]);
+    req.session.admin = updatedAdmin[0];
+    if (typeof req.session.admin.permissions === 'string') {
+      req.session.admin.permissions = JSON.parse(req.session.admin.permissions);
+    }
+
+    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
+  } catch (err) {
+    console.error('Update profile error:', err);
+    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
+    res.render('profile', { admin: req.session.admin, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
+  }
+});
+
+app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
+  console.log('POST /profile');
+  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
+  const user = req.session.admin;
+  const { username, email, password } = req.body;
+  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
+
+  const validationErrors = [];
+  const usernameError = validateUsername(username);
+  const emailError = validateEmail(email);
+  let passwordError = null;
+  if (password) {
+    passwordError = validatePassword(password);
+  }
+
+  if (usernameError) validationErrors.push(usernameError);
+  if (emailError) validationErrors.push(emailError);
+  if (passwordError) validationErrors.push(passwordError);
+
+  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
+  if (duplicateUsername.length > 0) {
+    validationErrors.push('Username already exists');
+  }
+  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
+  if (duplicateEmail.length > 0) {
+    validationErrors.push('Email already exists');
+  }
+
+  if (validationErrors.length > 0) {
+    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
+  }
+
+  try {
+    let hashedPassword = user.password;
+    let plaintextPassword = user.plaintext_password;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+      plaintextPassword = password;
+    }
+
+    await db.pool.query(
+      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
+      [username, email, hashedPassword, plaintextPassword, user.id]
+    );
+
+    req.session.admin = {
+      ...req.session.admin,
+      username,
+      email,
+      password: hashedPassword,
+      plaintext_password: plaintextPassword
+    };
+
+    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
+  } catch (err) {
+    console.error('Update profile error:', err);
+    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
+    res.render('profile', { admin: req.session.admin, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
+  }
+});
+
+app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
+  console.log('POST /profile');
+  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
+  const user = req.session.admin;
+  const { username, email, password } = req.body;
+  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
+
+  const validationErrors = [];
+  const usernameError = validateUsername(username);
+  const emailError = validateEmail(email);
+  let passwordError = null;
+  if (password) {
+    passwordError = validatePassword(password);
+  }
+
+  if (usernameError) validationErrors.push(usernameError);
+  if (emailError) validationErrors.push(emailError);
+  if (passwordError) validationErrors.push(passwordError);
+
+  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
+  if (duplicateUsername.length > 0) {
+    validationErrors.push('Username already exists');
+  }
+  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
+  if (duplicateEmail.length > 0) {
+    validationErrors.push('Email already exists');
+  }
+
+  if (validationErrors.length > 0) {
+    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
+  }
+
+  try {
+    let hashedPassword = user.password;
+    let plaintextPassword = user.plaintext_password;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+      plaintextPassword = password;
+    }
+
+    await db.pool.query(
+      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
+      [username, email, hashedPassword, plaintextPassword, user.id]
+    );
+
+    req.session.admin = {
+      ...req.session.admin,
+      username,
+      email,
+      password: hashedPassword,
+      plaintext_password: plaintextPassword
+    };
+
+    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
+  } catch (err) {
+    console.error('Update profile error:', err);
+    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
+    res.render('profile', { admin: user, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user });
+  }
+});
+
+app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
+  console.log('POST /profile');
+  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
   const user = req.session.admin;
   const { username, email, password } = req.body;
   console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
@@ -1155,8 +1689,8 @@ app.get('/add-admin', isAuthenticated, hasPermission('add_admin'), (req, res) =>
 
 app.post('/add-admin', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
   const user = req.session.admin;
-  const { username, password, email, can_entry, can_exit, can_manage } = req.body;
-  console.log('POST /add-admin:', { username, email, can_entry, can_exit, can_manage });
+  const { username, password, email, can_entry, can_exit, can_manage, can_profile } = req.body;
+  console.log('POST /add-admin:', { username, email, can_entry, can_exit, can_manage, can_profile });
 
   const validationErrors = [];
   const usernameError = validateUsername(username);
@@ -1188,14 +1722,14 @@ app.post('/add-admin', isAuthenticated, hasPermission('add_admin'), async (req, 
       entry: can_entry === 'on',
       exit: can_exit === 'on',
       manage: can_manage === 'on',
+      profile: can_profile === 'on',
       add_admin: false
     };
     await db.pool.query(
       'INSERT INTO admins (username, password, plaintext_password, email, permissions) VALUES (?, ?, ?, ?, ?)',
       [username, hashedPassword, password, email, JSON.stringify(permissions)]
     );
-    console.log('Admin added:', { username, plaintext_password: password });
-
+    console.log('Admin added:', { username, permissions });
     res.redirect('/dashboard');
   } catch (err) {
     console.error('Add admin error:', err);
@@ -1209,62 +1743,25 @@ app.get('/manage-admins', isAuthenticated, hasPermission('add_admin'), async (re
   console.log('GET /manage-admins');
   try {
     const user = req.session.admin;
-    const filter = req.query.filter || 'weekly';
     const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
-    console.log('Admins list:', admins);
-    res.render('manage-admins', { admins, error: null, success: null, filter, user });
+    // Parse permissions for each admin and set a default if null or invalid
+    const parsedAdmins = admins.map(admin => {
+      let parsedPermissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
+      if (admin.permissions) {
+        try {
+          parsedPermissions = { ...parsedPermissions, ...JSON.parse(admin.permissions) };
+        } catch (err) {
+          console.error(`Error parsing permissions for admin ${admin.username}:`, err);
+        }
+      }
+      return { ...admin, permissions: parsedPermissions };
+    });
+    console.log('Admins list:', parsedAdmins);
+    res.render('manage-admins', { admins: parsedAdmins, error: null, success: null, user });
   } catch (err) {
     console.error('Manage admins error:', err);
     fs.writeFileSync('server.log', `Manage admins error: ${err}\n`, { flag: 'a' });
-    res.render('manage-admins', { admins: [], error: 'Server error: ' + err.message, success: null, filter: 'weekly', user: req.session.admin });
-  }
-});
-
-app.get('/manage-admins/confirm-delete/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
-  console.log('GET /manage-admins/confirm-delete/:id');
-  const user = req.session.admin;
-  const { id } = req.params;
-  const filter = req.query.filter || 'weekly';
-  try {
-    const [admins] = await db.pool.query('SELECT id, username, email FROM admins WHERE id = ? AND username != ?', [id, user.username]);
-    console.log('Fetched admin for deletion confirmation:', admins);
-    if (admins.length === 0) {
-      console.log('Admin not found for ID:', id);
-      const [allAdmins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
-      return res.render('manage-admins', { admins: allAdmins, error: 'Admin not found or cannot delete yourself', success: null, filter, user });
-    }
-    const adminToDelete = admins[0];
-    res.render('confirm-delete-admin', { admin: adminToDelete, error: null, success: null, filter, user });
-  } catch (err) {
-    console.error('Confirm delete admin error:', err);
-    fs.writeFileSync('server.log', `Confirm delete admin error: ${err}\n`, { flag: 'a' });
-    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
-    res.render('manage-admins', { admins, error: 'Server error: ' + err.message, success: null, filter, user });
-  }
-});
-
-app.post('/manage-admins/delete/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
-  console.log('POST /manage-admins/delete/:id');
-  const user = req.session.admin;
-  const { id } = req.params;
-  const filter = req.body.filter || 'weekly';
-  try {
-    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE id = ? AND username != ?', [id, user.username]);
-    if (admins.length === 0) {
-      const [allAdmins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
-      return res.render('manage-admins', { admins: allAdmins, error: 'Admin not found or cannot delete yourself', success: null, filter, user });
-    }
-
-    await db.pool.query('DELETE FROM admins WHERE id = ?', [id]);
-    console.log('Admin deleted:', { id });
-
-    const [updatedAdmins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
-    res.render('manage-admins', { admins: updatedAdmins, error: null, success: 'Admin deleted successfully', filter, user });
-  } catch (err) {
-    console.error('Delete admin error:', err);
-    fs.writeFileSync('server.log', `Delete admin error: ${err}\n`, { flag: 'a' });
-    const [admins] = await db.pool.query('SELECT id, username, email, permissions FROM admins WHERE username != ?', [user.username]);
-    res.render('manage-admins', { admins, error: 'Failed to delete admin: ' + err.message, success: null, filter, user });
+    res.render('manage-admins', { admins: [], error: 'Server error: ' + err.message, success: null, user: req.session.admin });
   }
 });
 
@@ -1277,12 +1774,18 @@ app.get('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'), 
     console.log('Fetched admin:', admins);
     if (admins.length === 0) {
       console.log('Admin not found for ID:', id);
-      return res.render('manage-admins', { admins: [], error: 'Admin not found', success: null, filter: 'weekly', user });
+      return res.render('manage-admins', { admins: [], error: 'Admin not found', success: null, user });
     }
     const adminToEdit = admins[0];
-    if (typeof adminToEdit.permissions === 'string') {
-      adminToEdit.permissions = JSON.parse(adminToEdit.permissions);
+    let parsedPermissions = { entry: false, exit: false, manage: false, profile: false, add_admin: false };
+    if (adminToEdit.permissions) {
+      try {
+        parsedPermissions = { ...parsedPermissions, ...JSON.parse(adminToEdit.permissions) };
+      } catch (err) {
+        console.error(`Error parsing permissions for admin ${adminToEdit.username}:`, err);
+      }
     }
+    adminToEdit.permissions = parsedPermissions;
     console.log('Rendering edit-admin with details:', {
       id: adminToEdit.id,
       username: adminToEdit.username,
@@ -1301,8 +1804,8 @@ app.get('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'), 
 app.post('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
   const user = req.session.admin;
   const { id } = req.params;
-  const { username, email, password, can_entry, can_exit, can_manage } = req.body;
-  console.log('POST /manage-admins/edit/:id:', { id, username, email, password, can_entry, can_exit, can_manage });
+  const { username, email, password, can_entry, can_exit, can_manage, can_profile } = req.body;
+  console.log('POST /manage-admins/edit/:id:', { id, username, email, password, can_entry, can_exit, can_manage, can_profile });
 
   try {
     const [admins] = await db.pool.query('SELECT id, username, email, permissions, password, plaintext_password FROM admins WHERE id = ? AND username != ?', [id, user.username]);
@@ -1310,6 +1813,7 @@ app.post('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'),
       return res.render('edit-admin', { admin: null, error: 'Admin not found', success: null, validationErrors: [], user });
     }
 
+    const adminToEdit = admins[0];
     const validationErrors = [];
     const usernameError = validateUsername(username);
     const emailError = validateEmail(email);
@@ -1329,273 +1833,57 @@ app.post('/manage-admins/edit/:id', isAuthenticated, hasPermission('add_admin'),
     }
 
     if (validationErrors.length > 0) {
-      const adminToEdit = { 
+      const adminToEditForRender = { 
         id, 
         username, 
         email, 
         password,
         plaintext_password: password,
-        permissions: { entry: can_entry === 'on', exit: can_exit === 'on', manage: can_manage === 'on', add_admin: false }
+        permissions: { entry: can_entry === 'on', exit: can_exit === 'on', manage: can_manage === 'on', profile: can_profile === 'on', add_admin: false }
       };
-      return res.render('edit-admin', { admin: adminToEdit, error: null, success: null, validationErrors, user });
+      return res.render('edit-admin', { admin: adminToEditForRender, error: null, success: null, validationErrors, user });
     }
 
     const permissions = {
       entry: can_entry === 'on',
       exit: can_exit === 'on',
       manage: can_manage === 'on',
+      profile: can_profile === 'on',
       add_admin: false
     };
 
     const hashedPassword = await bcrypt.hash(password, 10);
     console.log('Saving hashed password:', hashedPassword);
+    
+    // Check if username or password has changed
+    const usernameChanged = username !== adminToEdit.username;
+    const passwordChanged = password !== adminToEdit.plaintext_password;
+
     await db.pool.query(
       'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = NULL, permissions = ? WHERE id = ?',
       [username, email, hashedPassword, JSON.stringify(permissions), id]
     );
     console.log('Admin details updated:', { id, username, email, permissions });
-    console.log('Redirecting to /manage-admins');
+
+    // If username or password has changed, invalidate all sessions for the admin
+    if (usernameChanged || passwordChanged) {
+      invalidateUserSessions(id, req.sessionID);
+      console.log(`Invalidated sessions for admin with ID ${id} due to ${usernameChanged ? 'username' : ''}${usernameChanged && passwordChanged ? ' and ' : ''}${passwordChanged ? 'password' : ''} change`);
+    }
+
     res.redirect('/manage-admins');
   } catch (err) {
     console.error('Edit admin update error:', err);
     fs.writeFileSync('server.log', `Edit admin update error: ${err}\n`, { flag: 'a' });
-    const adminToEdit = { 
+    const adminToEditForRender = { 
       id, 
       username, 
       email, 
       password,
       plaintext_password: password,
-      permissions: { entry: can_entry === 'on', exit: can_exit === 'on', manage: can_manage === 'on', add_admin: false }
+      permissions: { entry: can_entry === 'on', exit: can_exit === 'on', manage: can_manage === 'on', profile: can_profile === 'on', add_admin: false }
     };
-    res.render('edit-admin', { admin: adminToEdit, error: 'Failed to update admin: ' + err.message, success: null, validationErrors: [], user });
-  }
-});
-
-// Reports Route
-app.get('/reports', isAuthenticated, hasPermission('add_admin'), async (req, res) => {
-  console.log('GET /reports');
-  try {
-    const user = req.session.admin;
-    const filter = req.query.filter || 'today';
-    let days = 1;
-    let dateCondition = '';
-    if (filter === 'weekly') {
-      days = 7;
-      dateCondition = 'AND DATE(x.exit_time) >= CURDATE() - INTERVAL 7 DAY';
-    } else if (filter === 'monthly') {
-      days = 30;
-      dateCondition = 'AND DATE(x.exit_time) >= CURDATE() - INTERVAL 30 DAY';
-    } else {
-      dateCondition = 'AND DATE(x.exit_time) = CURDATE()';
-    }
-
-    const [totalEarnings] = await db.pool.query(
-      `SELECT COALESCE(SUM(x.cost), 0) as total 
-       FROM exits x 
-       WHERE 1=1 ${dateCondition}`
-    );
-
-    const [totalEntries] = await db.pool.query(
-      `SELECT COUNT(*) as count 
-       FROM entries e 
-       WHERE DATE(e.entry_time) >= CURDATE() - INTERVAL ? DAY`,
-      [days]
-    );
-    const [totalExits] = await db.pool.query(
-      `SELECT COUNT(*) as count 
-       FROM exits x 
-       WHERE DATE(x.exit_time) >= CURDATE() - INTERVAL ? DAY`,
-      [days]
-    );
-
-    const [adminActivity] = await db.pool.query(
-      `SELECT a.username, 
-              SUM(CASE WHEN e.entry_time >= CURDATE() - INTERVAL ? DAY THEN 1 ELSE 0 END) as entries_count,
-              SUM(CASE WHEN x.exit_time >= CURDATE() - INTERVAL ? DAY THEN 1 ELSE 0 END) as exits_count
-       FROM admins a
-       LEFT JOIN entries e ON e.id IN (SELECT entry_id FROM exits WHERE DATE(exit_time) >= CURDATE() - INTERVAL ? DAY)
-       LEFT JOIN exits x ON x.entry_id = e.id AND DATE(x.exit_time) >= CURDATE() - INTERVAL ? DAY
-       GROUP BY a.id, a.username`,
-      [days, days, days, days]
-    );
-
-    console.log('Reports data:', { totalEarnings, totalEntries, totalExits, adminActivity });
-
-    res.render('reports', {
-      totalEarnings: totalEarnings[0].total || 0,
-      totalEntries: totalEntries[0].count || 0,
-      totalExits: totalExits[0].count || 0,
-      adminActivity,
-      filter,
-      error: null,
-      success: null,
-      user
-    });
-  } catch (err) {
-    console.error('Reports error:', err);
-    fs.writeFileSync('server.log', `Reports error: ${err}\n`, { flag: 'a' });
-    res.render('reports', {
-      totalEarnings: 0,
-      totalEntries: 0,
-      totalExits: 0,
-      adminActivity: [],
-      filter: 'today',
-      error: 'Server error: ' + err.message,
-      success: null,
-      user: req.session.admin
-    });
-  }
-});
-
-// Public Routes
-app.get('/public', async (req, res) => {
-  console.log('GET /public');
-  try {
-    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
-    const [lot] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
-    const formattedLot = lot.length > 0 ? {
-      total_spaces: Number(lot[0].total_spaces) || 0,
-      used_spaces: Number(lot[0].used_spaces) || 0
-    } : { total_spaces: 0, used_spaces: 0 };
-    const available = formattedLot.total_spaces - formattedLot.used_spaces;
-    const lotDetails = { categories, available, totalSpaces: formattedLot.total_spaces };
-    res.render('public-parking', { lots: [lotDetails], error: null, success: null, validationErrors: [], autofill: {}, user: null });
-  } catch (err) {
-    console.error('Public page error:', err);
-    fs.writeFileSync('server.log', `Public page error: ${err}\n`, { flag: 'a' });
-    res.render('public-parking', { lots: [], error: 'Server error', success: null, validationErrors: [], autofill: {}, user: null });
-  }
-});
-
-app.post('/public/park', async (req, res) => {
-  const { number_plate, owner_name, phone, category_id } = req.body;
-  console.log('POST /public/park:', { number_plate, owner_name, phone, category_id });
-
-  const validationErrors = [];
-  const plateError = validateNumberPlate(number_plate);
-  const ownerError = validateOwnerName(owner_name);
-  const phoneError = validatePhone(phone);
-
-  let categoryError = null;
-  const [categoryCheck] = await db.pool.query('SELECT id, spaces_per_vehicle FROM vehicle_categories WHERE id = ?', [category_id]);
-  const [lot] = await db.pool.query('SELECT total_spaces, used_spaces FROM parking_lot WHERE id = 1');
-  if (categoryCheck.length === 0) {
-    categoryError = 'Selected category does not exist';
-  } else if (lot.length === 0) {
-    categoryError = 'Parking lot configuration not found';
-  } else {
-    const spacesPerVehicle = Number(categoryCheck[0].spaces_per_vehicle) || 1;
-    const totalSpaces = Number(lot[0].total_spaces) || 0;
-    const usedSpaces = Number(lot[0].used_spaces) || 0;
-    const availableSpaces = totalSpaces - usedSpaces;
-    if (availableSpaces < spacesPerVehicle) {
-      categoryError = `Not enough spaces available in the lot. Required: ${spacesPerVehicle}, Available: ${availableSpaces}`;
-    }
-  }
-
-  if (plateError) validationErrors.push(plateError);
-  if (ownerError) validationErrors.push(ownerError);
-  if (phoneError) validationErrors.push(phoneError);
-  if (categoryError) validationErrors.push(categoryError);
-
-  if (validationErrors.length > 0) {
-    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
-    const [lotData] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
-    const formattedLot = lotData.length > 0 ? {
-      total_spaces: Number(lotData[0].total_spaces) || 0,
-      used_spaces: Number(lotData[0].used_spaces) || 0
-    } : { total_spaces: 0, used_spaces: 0 };
-    const available = formattedLot.total_spaces - formattedLot.used_spaces;
-    const lotDetails = { categories, available, totalSpaces: formattedLot.total_spaces };
-    return res.render('public-parking', { 
-      lots: [lotDetails], 
-      error: null, 
-      success: null,
-      validationErrors,
-      autofill: { number_plate, owner_name, phone, category_id },
-      user: null
-    });
-  }
-
-  try {
-    const connection = await db.pool.getConnection();
-    try {
-      await connection.beginTransaction();
-
-      const [entryResult] = await connection.query(
-        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
-        [number_plate, owner_name || null, phone || null, category_id]
-      );
-      const entryId = entryResult.insertId;
-
-      const spacesPerVehicle = Number(categoryCheck[0].spaces_per_vehicle) || 1;
-      await connection.query(
-        'UPDATE parking_lot SET used_spaces = used_spaces + ? WHERE id = 1',
-        [spacesPerVehicle]
-      );
-
-      await connection.commit();
-      connection.release();
-
-      if (req.session.subscription) {
-        const payload = JSON.stringify({
-          title: 'Vehicle Parked',
-          body: `Your vehicle ${number_plate} has been parked.`
-        });
-        await webPush.sendNotification(req.session.subscription, payload);
-      }
-
-      const ticketContent = `
-        <div style="text-align: center; font-family: Arial, sans-serif; padding: 20px;">
-          <h2>Parking System</h2>
-          <h4>Entry Ticket</h4>
-          <p><strong>Vehicle Number:</strong> ${number_plate}</p>
-          <p><strong>Entry Time:</strong> ${new Date().toLocaleString()}</p>
-        </div>
-      `;
-
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="entry_ticket_${number_plate}_${Date.now()}.pdf"`);
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-        </head>
-        <body>
-          <div id="ticket">${ticketContent}</div>
-          <script>
-            const element = document.getElementById('ticket');
-            html2pdf().from(element).save('entry_ticket_${number_plate}_${Date.now()}.pdf');
-            setTimeout(() => { window.location.href = '/public'; }, 1000);
-          </script>
-        </body>
-        </html>
-      `);
-    } catch (err) {
-      await connection.rollback();
-      connection.release();
-      throw err;
-    }
-  } catch (err) {
-    console.error('Public park error:', err);
-    fs.writeFileSync('server.log', `Public park error: ${err}\n`, { flag: 'a' });
-    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
-    const [lotData] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
-    const formattedLot = lotData.length > 0 ? {
-      total_spaces: Number(lotData[0].total_spaces) || 0,
-      used_spaces: Number(lotData[0].used_spaces) || 0
-    } : { total_spaces: 0, used_spaces: 0 };
-    const available = formattedLot.total_spaces - formattedLot.used_spaces;
-    const lotDetails = { categories, available, totalSpaces: formattedLot.total_spaces };
-    res.render('public-parking', { 
-      lots: [lotDetails], 
-      error: 'Failed to park vehicle: ' + err.message, 
-      success: null,
-      validationErrors: [],
-      autofill: { number_plate, owner_name, phone, category_id },
-      user: null
-    });
+    res.render('edit-admin', { admin: adminToEditForRender, error: 'Failed to update admin: ' + err.message, success: null, validationErrors: [], user });
   }
 });
 
