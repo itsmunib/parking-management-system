@@ -519,6 +519,79 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
   }
 });
 
+app.get('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
+  console.log('GET /profile');
+  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
+  try {
+    const user = req.session.admin;
+    res.render('profile', { admin: user, error: null, success: null, validationErrors: [], user });
+  } catch (err) {
+    console.error('Profile error:', err);
+    fs.writeFileSync('server.log', `Profile error: ${err}\n`, { flag: 'a' });
+    res.render('profile', { admin: req.session.admin, error: 'Server error: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
+  }
+});
+
+app.post('/profile', isAuthenticated, hasPermission('profile'), async (req, res) => {
+  console.log('POST /profile');
+  console.log('User accessing profile:', { username: req.session.admin.username, permissions: req.session.admin.permissions });
+  const user = req.session.admin;
+  const { username, email, password } = req.body;
+  console.log('POST /profile:', { username, email, password: password ? '[REDACTED]' : 'Not provided' });
+
+  const validationErrors = [];
+  const usernameError = validateUsername(username);
+  const emailError = validateEmail(email);
+  let passwordError = null;
+  if (password) {
+    passwordError = validatePassword(password);
+  }
+
+  if (usernameError) validationErrors.push(usernameError);
+  if (emailError) validationErrors.push(emailError);
+  if (passwordError) validationErrors.push(passwordError);
+
+  const [duplicateUsername] = await db.pool.query('SELECT id FROM admins WHERE username = ? AND id != ?', [username, user.id]);
+  if (duplicateUsername.length > 0) {
+    validationErrors.push('Username already exists');
+  }
+  const [duplicateEmail] = await db.pool.query('SELECT id FROM admins WHERE email = ? AND id != ?', [email, user.id]);
+  if (duplicateEmail.length > 0) {
+    validationErrors.push('Email already exists');
+  }
+
+  if (validationErrors.length > 0) {
+    return res.render('profile', { admin: user, error: null, success: null, validationErrors, user });
+  }
+
+  try {
+    let hashedPassword = user.password;
+    let plaintextPassword = user.plaintext_password;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+      plaintextPassword = password;
+    }
+
+    await db.pool.query(
+      'UPDATE admins SET username = ?, email = ?, password = ?, plaintext_password = ? WHERE id = ?',
+      [username, email, hashedPassword, plaintextPassword, user.id]
+    );
+
+    // Refresh the session with updated admin data
+    const [updatedAdmin] = await db.pool.query('SELECT * FROM admins WHERE id = ?', [user.id]);
+    req.session.admin = updatedAdmin[0];
+    if (typeof req.session.admin.permissions === 'string') {
+      req.session.admin.permissions = JSON.parse(req.session.admin.permissions);
+    }
+
+    res.render('profile', { admin: req.session.admin, error: null, success: 'Profile updated successfully', validationErrors: [], user: req.session.admin });
+  } catch (err) {
+    console.error('Update profile error:', err);
+    fs.writeFileSync('server.log', `Update profile error: ${err}\n`, { flag: 'a' });
+    res.render('profile', { admin: req.session.admin, error: 'Failed to update profile: ' + err.message, success: null, validationErrors: [], user: req.session.admin });
+  }
+});
+
 // Manage Routes
 app.get('/manage', isAuthenticated, hasPermission('manage'), async (req, res) => {
   console.log('GET /manage');
