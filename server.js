@@ -7,6 +7,8 @@ const fs = require('fs');
 const webPush = require('web-push');
 const activeSessions = new Map(); // Map<userId, Set<sessionId>>
 require('dotenv').config();
+// Set Node.js time zone to Karachi (PKT, UTC+5)
+process.env.TZ = 'Asia/Karachi';
 
 const app = express();
 
@@ -358,10 +360,13 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     const filter = req.query.filter || 'today';
     let dateCondition = '';
 
-    // Set today’s date in PKT
+    // Set today’s date in PKT (Node.js is already in PKT)
     const today = new Date();
-    const todayPKT = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }));
-    const todayPKTDateStr = todayPKT.toISOString().split('T')[0]; // e.g., "2025-05-22"
+    // Format the date to YYYY-MM-DD in PKT
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0'); // Months are 0-based, so add 1
+    const day = String(today.getDate()).padStart(2, '0');
+    const todayPKTDateStr = `${year}-${month}-${day}`; // e.g., "2025-05-23"
     console.log('Today’s date (PKT):', todayPKTDateStr);
 
     // Adjust date condition for vehicles and earnings
@@ -370,45 +375,55 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     } else if (filter === 'monthly') {
       dateCondition = `>= DATE_SUB('${todayPKTDateStr}', INTERVAL 30 DAY)`;
     } else {
-      dateCondition = `= '${todayPKTDateStr}'`;
+      dateCondition = `BETWEEN '${todayPKTDateStr} 00:00:00' AND '${todayPKTDateStr} 23:59:59'`;
     }
 
     // Debug: Fetch recent entries to verify entry_time
     const [recentEntries] = await db.pool.query(
-      `SELECT entry_time, CONVERT_TZ(entry_time, '+00:00', '+05:00') as entry_time_pkt 
-       FROM entries 
-       ORDER BY entry_time DESC LIMIT 5`
+      `SELECT entry_time FROM entries ORDER BY entry_time DESC LIMIT 5`
     );
     console.log('Recent entries:', recentEntries);
 
-    // Fetch vehicle count for the selected period, converting entry_time to PKT
-    const [vehicles] = await db.pool.query(
-      `SELECT COUNT(*) as count 
-       FROM entries 
-       WHERE DATE(CONVERT_TZ(entry_time, '+00:00', '+05:00')) ${dateCondition}`
+    // Debug: Fetch recent exits
+    const [recentExits] = await db.pool.query(
+      `SELECT entry_id, exit_time FROM exits ORDER BY exit_time DESC LIMIT 5`
+    );
+    console.log('Recent exits:', recentExits);
+
+    // Count non-exited entries for the selected period
+    const [nonExitedVehicles] = await db.pool.query(
+      `SELECT COUNT(*) as count FROM entries WHERE entry_time ${dateCondition}`
     );
 
-    // Debug: Fetch entries that should match the condition
+    // Count exited vehicles by querying the exits table
+    const [exitedVehicles] = await db.pool.query(
+      `SELECT COUNT(*) as count FROM exits WHERE exit_time ${dateCondition}`
+    );
+
+    // Total vehicles = non-exited + exited
+    const totalVehicles = (nonExitedVehicles[0].count || 0) + (exitedVehicles[0].count || 0);
+
+    // Debug: Fetch entries and exits that should match the condition
     const [matchingEntries] = await db.pool.query(
-      `SELECT entry_time, CONVERT_TZ(entry_time, '+00:00', '+05:00') as entry_time_pkt 
-       FROM entries 
-       WHERE DATE(CONVERT_TZ(entry_time, '+00:00', '+05:00')) ${dateCondition}`
+      `SELECT entry_time FROM entries WHERE entry_time ${dateCondition}`
     );
-    console.log('Entries matching filter:', matchingEntries);
+    console.log('Non-exited entries matching filter:', matchingEntries);
 
-    // Fetch earnings for the selected period, converting exit_time to PKT
+    const [matchingExits] = await db.pool.query(
+      `SELECT entry_id, exit_time FROM exits WHERE exit_time ${dateCondition}`
+    );
+    console.log('Exited entries matching filter:', matchingExits);
+
+    // Fetch earnings for the selected period
     const [earnings] = await db.pool.query(
-      `SELECT COALESCE(SUM(x.cost), 0) as total 
-       FROM exits x 
-       WHERE DATE(CONVERT_TZ(x.exit_time, '+00:00', '+05:00')) ${dateCondition}`
+      `SELECT COALESCE(SUM(x.cost), 0) as total FROM exits x WHERE exit_time ${dateCondition}`
     );
 
-    // Fetch currently parked vehicles to calculate used spaces
+    // Fetch currently parked vehicles (only non-exited entries remain in the table)
     const [parkedVehicles] = await db.pool.query(
       `SELECT e.category_id, vc.spaces_per_vehicle 
        FROM entries e 
-       JOIN vehicle_categories vc ON e.category_id = vc.id 
-       WHERE e.id NOT IN (SELECT entry_id FROM exits)`
+       JOIN vehicle_categories vc ON e.category_id = vc.id`
     );
 
     // Fetch total spaces from parking lot
@@ -421,10 +436,19 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     const parkedCount = parkedVehicles.length;
     const available = totalSpaces - totalUsedSpaces;
 
-    console.log('Dashboard queries:', { vehicles: vehicles[0], earnings: earnings[0], parkedCount, totalUsedSpaces, totalSpaces, available });
+    console.log('Dashboard queries:', { 
+      totalVehicles, 
+      nonExitedVehicles: nonExitedVehicles[0].count, 
+      exitedVehicles: exitedVehicles[0].count, 
+      earnings: earnings[0].total, 
+      parkedCount, 
+      totalUsedSpaces, 
+      totalSpaces, 
+      available 
+    });
 
     const renderData = {
-      vehicles: vehicles[0].count || 0,
+      vehicles: totalVehicles,
       earnings: Number(earnings[0].total) || 0,
       available,
       parked: parkedCount,
@@ -998,7 +1022,7 @@ app.post('/public/park', async (req, res) => {
       await connection.beginTransaction();
 
       const [entryResult] = await connection.query(
-        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, UTC_TIMESTAMP())',
+        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
         [number_plate, owner_name || null, phone || null, category_id]
       );
       const entryId = entryResult.insertId;
@@ -1186,7 +1210,7 @@ app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => 
       await connection.beginTransaction();
 
       const [entryResult] = await connection.query(
-        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, UTC_TIMESTAMP())',
+        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
         [number_plate, owner_name || null, phone || null, category_id]
       );
 
@@ -1201,7 +1225,7 @@ app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => 
 
       // Fetch the newly created entry to get the entry_time
       const [newEntry] = await db.pool.query('SELECT entry_time FROM entries WHERE id = ?', [entryResult.insertId]);
-      const entryTime = new Date(newEntry[0].entry_time).toLocaleString('en-US', { timeZone: 'Asia/Karachi' });
+      const entryTime = new Date(newEntry[0].entry_time).toLocaleString();
 
       // Generate the receipt content
       const receiptContent = `
@@ -1332,11 +1356,12 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
       );
       console.log('Exit record inserted:', { entry_id, cost, insertId: result.insertId });
 
-      const [deleteResult] = await connection.query(
+      // Delete the entry instead of marking it as exited
+      const [deleteEntryResult] = await connection.query(
         'DELETE FROM entries WHERE id = ?',
         [entry_id]
       );
-      console.log('Entry deletion result:', { entry_id, affectedRows: deleteResult.affectedRows });
+      console.log('Entry deleted:', { entry_id, affectedRows: deleteEntryResult.affectedRows });
 
       const spacesPerVehicle = Number(entry[0].spaces_per_vehicle) || 1;
       const [updateResult] = await connection.query(
@@ -1376,7 +1401,7 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
     if (req.session.subscription) {
       const payload = JSON.stringify({
         title: 'Vehicle Exited',
-        body: `Your vehicle ${entry[0].number_plate} has exited. Total cost: $${cost.toFixed(2)}.`
+        body: `Your vehicle ${entry[0].number_plate} has exited. Total cost: PKR ${cost.toFixed(2)}.`
       });
       await webPush.sendNotification(req.session.subscription, payload);
     }

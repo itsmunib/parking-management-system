@@ -2929,4 +2929,6 @@ app.get('/logout', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-});
+});Dashboard error: Error: Unknown column 'exited' in 'field list'
+Dashboard error: Error: Unknown column 'exited' in 'field list'
+Dashboard error: Error: Unknown column 'exited' in 'field list'

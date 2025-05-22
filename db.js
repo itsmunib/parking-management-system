@@ -38,14 +38,24 @@ if (process.env.NODE_ENV !== 'production') {
 
 const pool = mysql.createPool(dbConfig);
 
-// Test connection on startup
+// Set the database time zone to PKT (UTC+5)
 pool.getConnection((err, connection) => {
   if (err) {
     console.error('Failed to connect to database:', err.message);
     return;
   }
   console.log('Successfully connected to database');
-  connection.release();
+
+  // Set time zone to PKT
+  connection.query("SET time_zone = '+05:00';", (err) => {
+    if (err) {
+      console.error('Error setting database time zone to PKT:', err.message);
+      connection.release();
+      return;
+    }
+    console.log('Database time zone set to PKT (UTC+5)');
+    connection.release();
+  });
 });
 
 // Wrapper to handle tenant-specific queries
