@@ -279,52 +279,37 @@
 </head>
 <body>
   <!-- Sidebar -->
-  <div class="sidebar">
-    <div class="brand">
-      <i class="bi bi-car-front-fill"></i> Parking System
-    </div>
-    <nav>
-      <a href="/dashboard" class="nav-link <%= page === 'dashboard' ? 'active' : '' %>">
-        <i class="bi bi-speedometer2"></i> Dashboard
-      </a>
-      <% if (user && (user.permissions.entry || user.username === 'superadmin')) { %>
-        <a href="/entry" class="nav-link <%= page === 'entry' ? 'active' : '' %>">
-          <i class="bi bi-box-arrow-in-right"></i> Entry
-        </a>
+  <nav class="sidebar" id="sidebar">
+    <ul class="nav flex-column">
+      <li class="nav-item">
+        <a class="nav-link" href="/dashboard"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a>
+      </li>
+      <% if (user) { %>
+        <% if (user.permissions.entry || user.username === 'superadmin') { %>
+          <li class="nav-item">
+            <a class="nav-link" href="/entry"><i class="fas fa-sign-in-alt"></i><span>Entry</span></a>
+          </li>
+        <% } %>
+        <% if (user.permissions.exit || user.username === 'superadmin') { %>
+          <li class="nav-item">
+            <a class="nav-link" href="/exit"><i class="fas fa-sign-out-alt"></i><span>Exit</span></a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/manage"><i class="fas fa-cogs"></i><span>Manage</span></a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/manage-admins"><i class="fas fa-users-cog"></i><span>Manage Admins</span></a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/add-admin"><i class="fas fa-user-plus"></i><span>Add Admin</span></a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="/profile"><i class="fas fa-user"></i><span>Profile</span></a>
+          </li>
+        <% } %>
       <% } %>
-      <% if (user && (user.permissions.exit || user.username === 'superadmin')) { %>
-        <a href="/exit" class="nav-link <%= page === 'exit' ? 'active' : '' %>">
-          <i class="bi bi-box-arrow-left"></i> Exit
-        </a>
-      <% } %>
-      <% if (user && (user.permissions.manage || user.username === 'superadmin')) { %>
-        <a href="/manage" class="nav-link <%= page === 'manage' ? 'active' : '' %>">
-          <i class="bi bi-gear"></i> Manage
-        </a>
-      <% } %>
-      <% if (user && (user.permissions.manage || user.username === 'superadmin')) { %>
-        <a href="/reports" class="nav-link <%= page === 'reports' ? 'active' : '' %>">
-          <i class="bi bi-bar-chart"></i> Reports
-        </a>
-      <% } %>
-      <% if (user && (user.permissions.profile || user.username === 'superadmin')) { %>
-        <a href="/profile" class="nav-link <%= page === 'profile' ? 'active' : '' %>">
-          <i class="bi bi-person"></i> Profile
-        </a>
-      <% } %>
-      <% if (user && (user.permissions.add_admin || user.username === 'superadmin')) { %>
-        <a href="/add-admin" class="nav-link <%= page === 'add-admin' ? 'active' : '' %>">
-          <i class="bi bi-person-plus"></i> Add Admin
-        </a>
-        <a href="/manage-admins" class="nav-link <%= page === 'manage-admins' || page === 'edit-admin' || page === 'confirm-delete-admin' ? 'active' : '' %>">
-          <i class="bi bi-people"></i> Manage Admins
-        </a>
-      <% } %>
-      <a href="/logout" class="nav-link">
-        <i class="bi bi-box-arrow-right"></i> Logout
-      </a>
-    </nav>
-  </div>
+    </ul>
+  </nav>
 
   <!-- Toggle Sidebar Button (Mobile) -->
   <button class="toggle-sidebar d-md-none" onclick="toggleSidebar()">
