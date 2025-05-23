@@ -247,37 +247,42 @@
   </div>
 
   <!-- Sidebar -->
-  <nav class="sidebar" id="sidebar">
-    <ul class="nav flex-column">
-      <li class="nav-item">
+<nav class="sidebar" id="sidebar">
+  <ul class="nav flex-column">
+    <% if (user) { %>
+      <% if (user.permissions.entry || user.username === 'superadmin') { %>
         <a class="nav-link" href="/dashboard"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a>
-      </li>
-      <% if (user) { %>
-        <% if (user.permissions.entry || user.username === 'superadmin') { %>
-          <li class="nav-item">
-            <a class="nav-link" href="/entry"><i class="fas fa-sign-in-alt"></i><span>Entry</span></a>
-          </li>
-        <% } %>
-        <% if (user.permissions.exit || user.username === 'superadmin') { %>
-          <li class="nav-item">
-            <a class="nav-link" href="/exit"><i class="fas fa-sign-out-alt"></i><span>Exit</span></a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="/manage"><i class="fas fa-cogs"></i><span>Manage</span></a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="/manage-admins"><i class="fas fa-users-cog"></i><span>Manage Admins</span></a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="/add-admin"><i class="fas fa-user-plus"></i><span>Add Admin</span></a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link active" href="/profile"><i class="fas fa-user"></i><span>Profile</span></a>
-          </li>
-        <% } %>
+        <li class="nav-item">
+          <a class="nav-link" href="/entry"><i class="fas fa-sign-in-alt"></i><span>Entry</span></a>
+        </li>
       <% } %>
-    </ul>
-  </nav>
+      <% if (user.permissions.exit || user.username === 'superadmin') { %>
+        <li class="nav-item">
+          <a class="nav-link" href="/exit"><i class="fas fa-sign-out-alt"></i><span>Exit</span></a>
+        </li>
+      <% } %>
+      <% if (user.permissions.manage || user.username === 'superadmin') { %>
+        <li class="nav-item">
+          <a class="nav-link" href="/manage"><i class="fas fa-cogs"></i><span>Manage</span></a>
+        </li>
+      <% } %>
+      
+      <% if (user.permissions.add_admin || user.username === 'superadmin') { %>
+        <li class="nav-item">
+        <li class="nav-item">
+          <a class="nav-link" href="/manage-admins"><i class="fas fa-users-cog"></i><span>Manage Admins</span></a>
+        </li>
+          <a class="nav-link" href="/add-admin"><i class="fas fa-user-plus"></i><span>Add Admin</span></a>
+        </li>
+      <% } %>
+      
+    <% } %><% if (user.permissions.profile || user.username === 'superadmin') { %>
+        <li class="nav-item">
+          <a class="nav-link active" href="/profile"><i class="fas fa-user"></i><span>Profile</span></a>
+        </li>
+      <% } %>
+  </ul>
+</nav>
 
   <!-- Main Content -->
   <div class="main-content" id="main-content">
@@ -321,7 +326,7 @@
 
   <!-- Footer -->
   <footer>
-    <p>© <%= new Date().getFullYear() %> SmartPark Hub System. All rights reserved.</p>
+    <p>Created With 🤍 By TrackDiv © <%= new Date().getFullYear() %> SmartPark Hub System. All rights reserved.</p>
   </footer>
 
   <!-- Bootstrap JS and Sidebar Toggle Script -->

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vehicle Entry - SmartPark Hub System</title>
+  <title>Vehicle Entry - SmartPark Hub</title>
   <!-- Bootstrap CSS -->
   <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
   <!-- Font Awesome for Icons -->
@@ -30,7 +30,7 @@
       overflow-x: hidden;
     }
 
-    /* Top Navigation Bar (for consistency with dashboard) */
+    /* Top Navigation Bar */
     .top-nav {
       position: fixed;
       top: 0;
@@ -198,9 +198,97 @@
     }
 
     /* Validation Errors */
-    .alert-danger {
+    .alert {
       border-radius: 5px;
-      margin-top: 20px;
+      margin-bottom: 20px;
+    }
+
+    /* Receipt Modal Styles */
+    .modal-content {
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      border: none;
+      font-family: 'Roboto', sans-serif;
+    }
+    .modal-header {
+      background-color: #f8f9fa;
+      border-bottom: 2px solid #dee2e6;
+      border-top-left-radius: 10px;
+      border-top-right-radius: 10px;
+      padding: 20px;
+      text-align: center;
+    }
+    .modal-header .close {
+      font-size: 1.5rem;
+      color: #333;
+    }
+    .modal-header .close:hover {
+      color: #000;
+    }
+    .modal-title {
+      font-weight: 700;
+      font-size: 1.5rem;
+      color: var(--primary);
+      width: 100%;
+    }
+    .modal-body {
+      padding: 30px;
+      background-color: #fff;
+    }
+    .receipt-header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .receipt-header h3 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin: 0;
+    }
+    .receipt-header p {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      margin: 5px 0 0;
+    }
+    .receipt-details {
+      border-top: 2px solid #dee2e6;
+      border-bottom: 2px solid #dee2e6;
+      padding: 20px 0;
+      margin-bottom: 20px;
+    }
+    .receipt-details .row {
+      margin-bottom: 10px;
+    }
+    .receipt-details .row:last-child {
+      margin-bottom: 0;
+    }
+    .receipt-details .col-6 {
+      padding: 5px 0;
+    }
+    .receipt-details .label {
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+    .receipt-details .value {
+      color: var(--text-secondary);
+    }
+    .receipt-footer {
+      text-align: center;
+      border-top: 1px dashed #dee2e6;
+      padding-top: 20px;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+    .receipt-footer p {
+      margin: 5px 0;
+    }
+    .modal-footer.no-print {
+      border-top: 1px solid #dee2e6;
+      padding: 15px;
+    }
+    .modal-footer .btn {
+      padding: 8px 20px;
+      font-weight: 500;
     }
 
     /* Footer Styles */
@@ -232,6 +320,37 @@
       footer {
         margin-left: 0;
       }
+      .receipt-details .row {
+        flex-direction: column;
+      }
+      .receipt-details .col-6 {
+        width: 100%;
+      }
+    }
+
+    /* Print-specific styles */
+    @media print {
+      .modal-footer, .no-print {
+        display: none !important;
+      }
+      .modal-body {
+        border: 1px solid #000;
+        padding: 20px;
+        background-color: #fff;
+      }
+      .modal-content {
+        box-shadow: none;
+        border: none;
+        width: 100%;
+        margin: 0;
+      }
+      .receipt-details {
+        border-top: 2px solid #000;
+        border-bottom: 2px solid #000;
+      }
+      .receipt-footer {
+        border-top: 1px dashed #000;
+      }
     }
   </style>
 </head>
@@ -247,37 +366,43 @@
   </div>
 
   <!-- Sidebar -->
-  <nav class="sidebar" id="sidebar">
-    <ul class="nav flex-column">
-      <li class="nav-item">
+  <!-- Sidebar -->
+<nav class="sidebar" id="sidebar">
+  <ul class="nav flex-column">
+    <% if (user) { %>
+      <% if (user.permissions.entry || user.username === 'superadmin') { %>
         <a class="nav-link" href="/dashboard"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a>
-      </li>
-      <% if (user) { %>
-        <% if (user.permissions.entry || user.username === 'superadmin') { %>
-          <li class="nav-item">
-            <a class="nav-link active" href="/entry"><i class="fas fa-sign-in-alt"></i><span>Entry</span></a>
-          </li>
-        <% } %>
-        <% if (user.permissions.exit || user.username === 'superadmin') { %>
-          <li class="nav-item">
-            <a class="nav-link" href="/exit"><i class="fas fa-sign-out-alt"></i><span>Exit</span></a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="/manage"><i class="fas fa-cogs"></i><span>Manage</span></a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="/manage-admins"><i class="fas fa-users-cog"></i><span>Manage Admins</span></a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="/add-admin"><i class="fas fa-user-plus"></i><span>Add Admin</span></a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="/profile"><i class="fas fa-user"></i><span>Profile</span></a>
-          </li>
-        <% } %>
+        <li class="nav-item">
+          <a class="nav-link active" href="/entry"><i class="fas fa-sign-in-alt"></i><span>Entry</span></a>
+        </li>
       <% } %>
-    </ul>
-  </nav>
+      <% if (user.permissions.exit || user.username === 'superadmin') { %>
+        <li class="nav-item">
+          <a class="nav-link" href="/exit"><i class="fas fa-sign-out-alt"></i><span>Exit</span></a>
+        </li>
+      <% } %>
+      <% if (user.permissions.manage || user.username === 'superadmin') { %>
+        <li class="nav-item">
+          <a class="nav-link" href="/manage"><i class="fas fa-cogs"></i><span>Manage</span></a>
+        </li>
+      <% } %>
+      
+      <% if (user.permissions.add_admin || user.username === 'superadmin') { %>
+        <li class="nav-item">
+        <li class="nav-item">
+          <a class="nav-link" href="/manage-admins"><i class="fas fa-users-cog"></i><span>Manage Admins</span></a>
+        </li>
+          <a class="nav-link" href="/add-admin"><i class="fas fa-user-plus"></i><span>Add Admin</span></a>
+        </li>
+      <% } %>
+      
+    <% } %><% if (user.permissions.profile || user.username === 'superadmin') { %>
+        <li class="nav-item">
+          <a class="nav-link" href="/profile"><i class="fas fa-user"></i><span>Profile</span></a>
+        </li>
+      <% } %>
+  </ul>
+</nav>
 
   <!-- Main Content -->
   <div class="main-content" id="main-content">
@@ -287,6 +412,9 @@
 
     <% if (error) { %>
       <div class="alert alert-danger text-center"><%= error %></div>
+    <% } %>
+    <% if (success) { %>
+      <div class="alert alert-success text-center"><%= success %></div>
     <% } %>
 
     <!-- Entry Form -->
@@ -324,11 +452,74 @@
         <% } %>
       </form>
     </div>
+
+    <!-- Receipt Modal -->
+    <% if (receipt) { %>
+      <div class="modal fade" id="receiptModal" tabindex="-1" role="dialog" aria-labelledby="receiptModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg" role="document">
+          <div class="modal-content">
+            <div class="modal-header no-print">
+              <h5 class="modal-title" id="receiptModalLabel">Entry Receipt</h5>
+              <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <span aria-hidden="true">×</span>
+              </button>
+            </div>
+            <div class="modal-body">
+              <div class="receipt-header">
+                <h3>SmartPark Hub</h3>
+                <p>Receipt #: <%= receipt.receipt_number %> | Date: <%= receipt.date %></p>
+              </div>
+              <div class="receipt-details">
+                <div class="row">
+                  <div class="col-6">
+                    <span class="label">Vehicle Number:</span>
+                    <span class="value"><%= receipt.vehicle_number %></span>
+                  </div>
+                  <div class="col-6">
+                    <span class="label">Category:</span>
+                    <span class="value"><%= receipt.category %></span>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-6">
+                    <span class="label">Owner Name:</span>
+                    <span class="value"><%= receipt.owner_name %></span>
+                  </div>
+                  <div class="col-6">
+                    <span class="label">Phone:</span>
+                    <span class="value"><%= receipt.phone %></span>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-6">
+                    <span class="label">Entry Time:</span>
+                    <span class="value"><%= receipt.entry_time %></span>
+                  </div>
+                  <div class="col-6">
+                    <span class="label">Added By:</span>
+                    <span class="value"><%= receipt.added_by %></span>
+                  </div>
+                </div>
+              </div>
+              <div class="receipt-footer">
+                <p>Thank you for using SmartPark Hub!</p>
+                <p>Contact Us: support@smartparkhub.com | +92 123 456 7890</p>
+                <p>Terms: Please retain this receipt for exit processing.</p>
+              </div>
+            </div>
+            <div class="modal-footer no-print">
+              <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+              <button type="button" class="btn btn-primary" onclick="window.print()">Print Receipt</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% } %>
   </div>
 
   <!-- Footer -->
   <footer>
-    <p>© <%= new Date().getFullYear() %> SmartPark Hub System. All rights reserved.</p>
+    <p>© <%= new Date().getFullYear() %> SmartPark Hub. All rights reserved.</p>
   </footer>
 
   <!-- Bootstrap JS and Sidebar Toggle Script -->
@@ -340,6 +531,11 @@
         $('.sidebar').toggleClass('collapsed');
         $('.main-content').toggleClass('collapsed');
       });
+
+      // Automatically show the receipt modal if receipt data exists
+      <% if (receipt) { %>
+        $('#receiptModal').modal('show');
+      <% } %>
     });
   </script>
 </body>

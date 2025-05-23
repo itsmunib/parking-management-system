@@ -1309,189 +1309,252 @@ app.post('/public/park', async (req, res) => {
 app.get('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => {
   console.log('GET /entry');
   try {
-    const user = req.session.admin;
-    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
-    const [lot] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
-    const formattedLot = lot.length > 0 ? {
-      total_spaces: Number(lot[0].total_spaces) || 0,
-      used_spaces: Number(lot[0].used_spaces) || 0
-    } : { total_spaces: 0, used_spaces: 0 };
-    const formattedCategories = categories.map(category => ({
-      ...category,
-      available_spaces: formattedLot.total_spaces - formattedLot.used_spaces
-    }));
-    console.log('Entry categories:', formattedCategories, 'Lot:', formattedLot);
-    res.render('entry', { 
-      categories: formattedCategories, 
-      lot: formattedLot, 
-      error: null, 
+    const [categories] = await db.pool.query('SELECT id, name, spaces_per_vehicle FROM vehicle_categories');
+    
+    // Calculate available spaces for each category
+    const [parkedVehicles] = await db.pool.query(`
+      SELECT e.category_id, vc.spaces_per_vehicle 
+      FROM entries e 
+      JOIN vehicle_categories vc ON e.category_id = vc.id
+      WHERE e.status = 'Active'
+    `);
+
+    const usedSpacesByCategory = {};
+    parkedVehicles.forEach(vehicle => {
+      const catId = vehicle.category_id;
+      usedSpacesByCategory[catId] = (usedSpacesByCategory[catId] || 0) + (Number(vehicle.spaces_per_vehicle) || 1);
+    });
+
+    const [lot] = await db.pool.query('SELECT total_spaces FROM parking_lot WHERE id = 1');
+    const totalSpaces = lot.length > 0 ? Number(lot[0].total_spaces) || 0 : 0;
+
+    const totalUsedSpaces = Object.values(usedSpacesByCategory).reduce((sum, spaces) => sum + spaces, 0);
+    const totalAvailable = totalSpaces - totalUsedSpaces;
+
+    categories.forEach(category => {
+      const usedForThisCategory = usedSpacesByCategory[category.id] || 0;
+      const maxVehiclesForCategory = Math.floor(totalAvailable / (Number(category.spaces_per_vehicle) || 1));
+      category.available_spaces = Math.max(0, maxVehiclesForCategory);
+    });
+
+    res.render('entry', {
+      categories,
+      error: null,
       success: null,
-      autofill: {}, 
-      validationErrors: [], 
-      user
+      user: req.session.admin,
+      validationErrors: [],
+      autofill: { number_plate: '', owner_name: '', phone: '', category_id: '' },
+      receipt: null
     });
   } catch (err) {
     console.error('Entry error:', err);
     fs.writeFileSync('server.log', `Entry error: ${err}\n`, { flag: 'a' });
-    res.render('entry', { 
-      categories: [], 
-      lot: { total_spaces: 0, used_spaces: 0 }, 
-      error: 'Server error', 
+    res.render('entry', {
+      categories: [],
+      error: 'Server error: ' + err.message,
       success: null,
-      autofill: {}, 
-      validationErrors: [], 
-      user: req.session.admin
+      user: req.session.admin,
+      validationErrors: [],
+      autofill: { number_plate: '', owner_name: '', phone: '', category_id: '' },
+      receipt: null
     });
   }
 });
 
 app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => {
-  const user = req.session.admin;
+  console.log('POST /entry');
   const { number_plate, owner_name, phone, category_id } = req.body;
-  console.log('POST /entry:', { number_plate, owner_name, phone, category_id });
-
-  const validationErrors = [];
-  const plateError = validateNumberPlate(number_plate);
-  const ownerError = validateOwnerName(owner_name);
-  const phoneError = validatePhone(phone);
-
-  let categoryError = null;
-  const [categoryCheck] = await db.pool.query('SELECT id, spaces_per_vehicle, name FROM vehicle_categories WHERE id = ?', [category_id]);
-  const [lot] = await db.pool.query('SELECT total_spaces, used_spaces FROM parking_lot WHERE id = 1');
-  if (categoryCheck.length === 0) {
-    categoryError = 'Selected category does not exist';
-  } else if (lot.length === 0) {
-    categoryError = 'Parking lot configuration not found';
-  } else {
-    const spacesPerVehicle = Number(categoryCheck[0].spaces_per_vehicle) || 1;
-    const totalSpaces = Number(lot[0].total_spaces) || 0;
-    const usedSpaces = Number(lot[0].used_spaces) || 0;
-    const availableSpaces = totalSpaces - usedSpaces;
-    if (availableSpaces < spacesPerVehicle) {
-      categoryError = `Not enough spaces available in the lot. Required: ${spacesPerVehicle}, Available: ${availableSpaces}`;
-    }
-  }
-
-  if (plateError) validationErrors.push(plateError);
-  if (ownerError) validationErrors.push(ownerError);
-  if (phoneError) validationErrors.push(phoneError);
-  if (categoryError) validationErrors.push(categoryError);
-
-  if (validationErrors.length > 0) {
-    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
-    const [lotData] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
-    const formattedLot = lotData.length > 0 ? {
-      total_spaces: Number(lotData[0].total_spaces) || 0,
-      used_spaces: Number(lotData[0].used_spaces) || 0
-    } : { total_spaces: 0, used_spaces: 0 };
-    const formattedCategories = categories.map(category => ({
-      ...category,
-      available_spaces: formattedLot.total_spaces - formattedLot.used_spaces
-    }));
-    return res.render('entry', { 
-      categories: formattedCategories, 
-      lot: formattedLot, 
-      error: null, 
-      success: null,
-      autofill: { number_plate, owner_name, phone, category_id }, 
-      validationErrors,
-      user
-    });
-  }
 
   try {
-    const [existing] = await db.pool.query(
-      'SELECT owner_name, phone FROM entries WHERE number_plate = ? ORDER BY entry_time DESC LIMIT 1',
-      [number_plate]
-    );
-    const autofill = {
-      number_plate,
-      owner_name: owner_name || (existing.length > 0 ? existing[0].owner_name : ''),
-      phone: phone || (existing.length > 0 ? existing[0].phone : ''),
-      category_id
-    };
-    console.log('Autofill data:', autofill);
-
-    const connection = await db.pool.getConnection();
-    try {
-      await connection.beginTransaction();
-
-      const [entryResult] = await connection.query(
-        'INSERT INTO entries (number_plate, owner_name, phone, category_id, entry_time) VALUES (?, ?, ?, ?, NOW())',
-        [number_plate, owner_name || null, phone || null, category_id]
-      );
-
-      const spacesPerVehicle = Number(categoryCheck[0].spaces_per_vehicle) || 1;
-      await connection.query(
-        'UPDATE parking_lot SET used_spaces = used_spaces + ? WHERE id = 1',
-        [spacesPerVehicle]
-      );
-
-      await connection.commit();
-      connection.release();
-
-      // Fetch the newly created entry to get the entry_time
-      const [newEntry] = await db.pool.query('SELECT entry_time FROM entries WHERE id = ?', [entryResult.insertId]);
-      const entryTime = new Date(newEntry[0].entry_time).toLocaleString();
-
-      // Generate the receipt content
-      const receiptContent = `
-        <div style="text-align: center; font-family: Arial, sans-serif; padding: 20px;">
-          <h2>Parking System</h2>
-          <h4>Entry Receipt</h4>
-          <p><strong>Vehicle Number:</strong> ${number_plate}</p>
-          <p><strong>Category:</strong> ${categoryCheck[0].name}</p>
-          <p><strong>Owner Name:</strong> ${owner_name || 'N/A'}</p>
-          <p><strong>Phone:</strong> ${phone || 'N/A'}</p>
-          <p><strong>Entry Time:</strong> ${entryTime}</p>
-          <p><strong>Added By:</strong> ${user.username}</p>
-        </div>
-      `;
-
-      // Serve as HTML, let client-side script handle PDF generation
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Entry Receipt</title>
-          <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-        </head>
-        <body>
-          <div id="receipt">${receiptContent}</div>
-          <script>
-            const element = document.getElementById('receipt');
-            html2pdf().from(element).save('entry_receipt_${number_plate}_${Date.now()}.pdf');
-            setTimeout(() => { window.location.href = '/dashboard'; }, 1000);
-          </script>
-        </body>
-        </html>
-      `);
-    } catch (err) {
-      await connection.rollback();
-      connection.release();
-      throw err;
+    // Validate inputs
+    const validationErrors = [];
+    if (!number_plate || number_plate.trim() === '') {
+      validationErrors.push('Number Plate is required');
     }
-  } catch (err) {
-    console.error('Add entry error:', err);
-    fs.writeFileSync('server.log', `Add entry error: ${err}\n`, { flag: 'a' });
-    const [categories] = await db.pool.query('SELECT * FROM vehicle_categories');
-    const [lotData] = await db.pool.query('SELECT * FROM parking_lot WHERE id = 1');
-    const formattedLot = lotData.length > 0 ? {
-      total_spaces: Number(lotData[0].total_spaces) || 0,
-      used_spaces: Number(lotData[0].used_spaces) || 0
-    } : { total_spaces: 0, used_spaces: 0 };
-    const formattedCategories = categories.map(category => ({
-      ...category,
-      available_spaces: formattedLot.total_spaces - formattedLot.used_spaces
-    }));
-    res.render('entry', { 
-      categories: formattedCategories, 
-      lot: formattedLot, 
-      error: 'Failed to add entry: ' + err.message, 
-      success: null,
-      autofill: { number_plate, owner_name, phone, category_id }, 
+    if (!category_id || isNaN(category_id)) {
+      validationErrors.push('Vehicle Category is required');
+    }
+
+    if (validationErrors.length > 0) {
+      const [categories] = await db.pool.query('SELECT id, name, spaces_per_vehicle FROM vehicle_categories');
+      
+      // Calculate available spaces for each category
+      const [parkedVehicles] = await db.pool.query(`
+        SELECT e.category_id, vc.spaces_per_vehicle 
+        FROM entries e 
+        JOIN vehicle_categories vc ON e.category_id = vc.id
+        WHERE e.status = 'Active'
+      `);
+
+      const usedSpacesByCategory = {};
+      parkedVehicles.forEach(vehicle => {
+        const catId = vehicle.category_id;
+        usedSpacesByCategory[catId] = (usedSpacesByCategory[catId] || 0) + (Number(vehicle.spaces_per_vehicle) || 1);
+      });
+
+      const [lot] = await db.pool.query('SELECT total_spaces FROM parking_lot WHERE id = 1');
+      const totalSpaces = lot.length > 0 ? Number(lot[0].total_spaces) || 0 : 0;
+
+      const totalUsedSpaces = Object.values(usedSpacesByCategory).reduce((sum, spaces) => sum + spaces, 0);
+      const totalAvailable = totalSpaces - totalUsedSpaces;
+
+      categories.forEach(category => {
+        const usedForThisCategory = usedSpacesByCategory[category.id] || 0;
+        const maxVehiclesForCategory = Math.floor(totalAvailable / (Number(category.spaces_per_vehicle) || 1));
+        category.available_spaces = Math.max(0, maxVehiclesForCategory);
+      });
+
+      return res.render('entry', {
+        categories,
+        error: null,
+        success: null,
+        user: req.session.admin,
+        validationErrors,
+        autofill: { number_plate, owner_name, phone, category_id },
+        receipt: null
+      });
+    }
+
+    // Fetch category details to check available spaces
+    const [category] = await db.pool.query('SELECT name, spaces_per_vehicle FROM vehicle_categories WHERE id = ?', [category_id]);
+    if (category.length === 0) {
+      throw new Error('Category not found');
+    }
+
+    const { name: category_name, spaces_per_vehicle } = category[0];
+    console.log('Category details:', { category_id, category_name, spaces_per_vehicle });
+
+    // Fetch current parked vehicles to calculate used spaces
+    const [parkedVehicles] = await db.pool.query(`
+      SELECT e.category_id, vc.spaces_per_vehicle 
+      FROM entries e 
+      JOIN vehicle_categories vc ON e.category_id = vc.id
+      WHERE e.status = 'Active'
+    `);
+    console.log('Parked vehicles:', parkedVehicles);
+    console.log('Number of active entries:', parkedVehicles.length);
+
+    const totalUsedSpaces = parkedVehicles.reduce((sum, vehicle) => {
+      const spaces = Number(vehicle.spaces_per_vehicle) || 1;
+      console.log('Vehicle spaces:', { category_id: vehicle.category_id, spaces });
+      return sum + spaces;
+    }, 0);
+    console.log('Total used spaces:', totalUsedSpaces);
+
+    const [lot] = await db.pool.query('SELECT total_spaces FROM parking_lot WHERE id = 1');
+    const totalSpaces = lot.length > 0 ? Number(lot[0].total_spaces) || 0 : 0;
+    console.log('Total spaces:', totalSpaces);
+
+    const available = totalSpaces - totalUsedSpaces;
+    console.log('Available spaces:', available);
+
+    if (available < spaces_per_vehicle) {
+      const [categories] = await db.pool.query('SELECT id, name, spaces_per_vehicle FROM vehicle_categories');
+
+      // Recalculate available spaces for error case
+      const [parkedVehiclesError] = await db.pool.query(`
+        SELECT e.category_id, vc.spaces_per_vehicle 
+        FROM entries e 
+        JOIN vehicle_categories vc ON e.category_id = vc.id
+        WHERE e.status = 'Active'
+      `);
+
+      const usedSpacesByCategoryError = {};
+      parkedVehiclesError.forEach(vehicle => {
+        const catId = vehicle.category_id;
+        usedSpacesByCategoryError[catId] = (usedSpacesByCategoryError[catId] || 0) + (Number(vehicle.spaces_per_vehicle) || 1);
+      });
+
+      const totalUsedSpacesError = Object.values(usedSpacesByCategoryError).reduce((sum, spaces) => sum + spaces, 0);
+      const totalAvailableError = totalSpaces - totalUsedSpacesError;
+
+      categories.forEach(category => {
+        const usedForThisCategory = usedSpacesByCategoryError[category.id] || 0;
+        const maxVehiclesForCategory = Math.floor(totalAvailableError / (Number(category.spaces_per_vehicle) || 1));
+        category.available_spaces = Math.max(0, maxVehiclesForCategory);
+      });
+
+      return res.render('entry', {
+        categories,
+        error: `Not enough parking spaces available. Total spaces (${totalSpaces}) cannot be less than used spaces (${totalUsedSpaces})`,
+        success: null,
+        user: req.session.admin,
+        validationErrors: [],
+        autofill: { number_plate, owner_name, phone, category_id },
+        receipt: null
+      });
+    }
+
+    // Insert the entry with all fields
+    const entry_time = new Date();
+    const added_by = req.session.admin.username;
+    const [result] = await db.pool.query(
+      'INSERT INTO entries (number_plate, entry_time, owner_name, phone, category_id, added_by, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [number_plate.trim().toUpperCase(), entry_time, owner_name || null, phone || null, category_id, added_by, 'Active']
+    );
+
+    const receiptNumber = result.insertId;
+
+    const [categories] = await db.pool.query('SELECT id, name, spaces_per_vehicle FROM vehicle_categories');
+
+    // Recalculate available spaces for success case
+    const [parkedVehiclesSuccess] = await db.pool.query(`
+      SELECT e.category_id, vc.spaces_per_vehicle 
+      FROM entries e 
+      JOIN vehicle_categories vc ON e.category_id = vc.id
+      WHERE e.status = 'Active'
+    `);
+
+    const usedSpacesByCategorySuccess = {};
+    parkedVehiclesSuccess.forEach(vehicle => {
+      const catId = vehicle.category_id;
+      usedSpacesByCategorySuccess[catId] = (usedSpacesByCategorySuccess[catId] || 0) + (Number(vehicle.spaces_per_vehicle) || 1);
+    });
+
+    const totalUsedSpacesSuccess = Object.values(usedSpacesByCategorySuccess).reduce((sum, spaces) => sum + spaces, 0);
+    const totalAvailableSuccess = totalSpaces - totalUsedSpacesSuccess;
+
+    categories.forEach(category => {
+      const usedForThisCategory = usedSpacesByCategorySuccess[category.id] || 0;
+      const maxVehiclesForCategory = Math.floor(totalAvailableSuccess / (Number(category.spaces_per_vehicle) || 1));
+      category.available_spaces = Math.max(0, maxVehiclesForCategory);
+    });
+
+    // Prepare receipt data
+    const receipt = {
+      receipt_number: receiptNumber,
+      date: entry_time.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }),
+      vehicle_number: number_plate.trim().toUpperCase(),
+      entry_time: entry_time.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }),
+      category: category_name,
+      owner_name: owner_name || 'N/A',
+      phone: phone || 'N/A',
+      added_by: added_by || 'Unknown'
+    };
+
+    console.log('Receipt data:', receipt);
+
+    res.render('entry', {
+      categories,
+      error: null,
+      success: 'Vehicle entry added successfully',
+      user: req.session.admin,
       validationErrors: [],
-      user
+      autofill: { number_plate: '', owner_name: '', phone: '', category_id: '' },
+      receipt
+    });
+  } catch (err) {
+    console.error('Entry error:', err);
+    fs.writeFileSync('server.log', `Entry error: ${err}\n`, { flag: 'a' });
+    const [categories] = await db.pool.query('SELECT id, name, spaces_per_vehicle FROM vehicle_categories');
+    res.render('entry', {
+      categories,
+      error: 'Server error: ' + err.message,
+      success: null,
+      user: req.session.admin,
+      validationErrors: [],
+      autofill: { number_plate, owner_name, phone, category_id },
+      receipt: null
     });
   }
 });
@@ -1506,11 +1569,35 @@ app.get('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
       JOIN vehicle_categories vc ON e.category_id = vc.id
       WHERE e.status = 'Active'
     `);
-    res.render('exit', { entries, error: null, success: null, user: req.session.admin });
+    res.render('exit', { entries, error: null, success: null, user: req.session.admin, receipt: null });
   } catch (err) {
     console.error('Exit error:', err);
     fs.writeFileSync('server.log', `Exit error: ${err}\n`, { flag: 'a' });
-    res.render('exit', { entries: [], error: 'Server error: ' + err.message, success: null, user: req.session.admin });
+    res.render('exit', { entries: [], error: 'Server error: ' + err.message, success: null, user: req.session.admin, receipt: null });
+  }
+});
+
+app.get('/exit/download', isAuthenticated, hasPermission('exit'), async (req, res) => {
+  console.log('GET /exit/download');
+  try {
+    const [exits] = await db.pool.query(`
+      SELECT e.number_plate, e.entry_time, e.owner_name, e.phone, vc.name as category, x.exit_time, x.cost
+      FROM exits x
+      JOIN entries e ON x.entry_id = e.id
+      JOIN vehicle_categories vc ON e.category_id = vc.id
+    `);
+
+    const csv = exits.map(exit => {
+      return `${exit.number_plate},${exit.entry_time},${exit.owner_name || 'N/A'},${exit.phone || 'N/A'},${exit.category},${exit.exit_time},${exit.cost}`;
+    }).join('\n');
+
+    res.header('Content-Type', 'text/csv');
+    res.attachment('exits.csv');
+    res.send(`Number Plate,Entry Time,Owner Name,Phone,Category,Exit Time,Cost\n${csv}`);
+  } catch (err) {
+    console.error('Exit download error:', err);
+    fs.writeFileSync('server.log', `Exit download error: ${err}\n`, { flag: 'a' });
+    res.status(500).send('Server error: ' + err.message);
   }
 });
 
@@ -1519,48 +1606,72 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
   const { entry_id } = req.body;
 
   try {
-    // Fetch the entry to get the number_plate, entry_time, and category_id
-    const [entry] = await db.pool.query('SELECT number_plate, entry_time, category_id FROM entries WHERE id = ?', [entry_id]);
+    // Fetch the entry
+    console.log('Fetching entry with ID:', entry_id);
+    const [entry] = await db.pool.query('SELECT number_plate, entry_time, category_id, owner_name, phone, added_by FROM entries WHERE id = ?', [entry_id]);
     if (entry.length === 0) {
+      console.log('Entry not found for ID:', entry_id);
       return res.render('exit', { 
         entries: [], 
         error: 'Entry not found', 
         success: null, 
-        user: req.session.admin 
+        user: req.session.admin,
+        receipt: null
       });
     }
 
-    const { number_plate, entry_time, category_id } = entry[0];
+    const { number_plate, entry_time, category_id, owner_name, phone, added_by } = entry[0];
     const exit_time = new Date();
 
     // Fetch the pricing details for the category
-    const [category] = await db.pool.query('SELECT pricing_type, price FROM vehicle_categories WHERE id = ?', [category_id]);
+    console.log('Fetching category with ID:', category_id);
+    const [category] = await db.pool.query('SELECT name, pricing_type, price FROM vehicle_categories WHERE id = ?', [category_id]);
     if (category.length === 0) {
+      console.log('Category not found for ID:', category_id);
       return res.render('exit', { 
         entries: [], 
         error: 'Category not found', 
         success: null, 
-        user: req.session.admin 
+        user: req.session.admin,
+        receipt: null
       });
     }
 
-    const { pricing_type, price } = category[0];
-    let cost = 0;
+    const { name: category_name, pricing_type, price } = category[0];
+    console.log('Pricing details:', { pricing_type, price, typeOfPrice: typeof price });
 
-    if (pricing_type === 'hourly') {
-      const hours = Math.ceil((exit_time - new Date(entry_time)) / (1000 * 60 * 60));
-      cost = hours * price;
-    } else {
-      cost = price;
+    // Validate price
+    const parsedPrice = Number(price);
+    if (isNaN(parsedPrice)) {
+      console.log('Invalid price value:', price);
+      throw new Error('Invalid price value in vehicle category');
     }
 
-    // Insert into exits table with number_plate
-    await db.pool.query('INSERT INTO exits (entry_id, number_plate, exit_time, cost) VALUES (?, ?, ?, ?)', [entry_id, number_plate, exit_time, cost]);
+    let cost = 0;
+    let durationHours = 0;
 
-    // Update the entry status to 'Exited' instead of deleting it
+    // Calculate duration and cost
+    const entryDate = new Date(entry_time);
+    durationHours = Math.ceil((exit_time - entryDate) / (1000 * 60 * 60)); // Duration in hours
+    if (pricing_type === 'hourly') {
+      cost = durationHours * parsedPrice;
+    } else {
+      cost = parsedPrice;
+    }
+
+    console.log('Calculated cost:', cost, typeof cost);
+
+    // Insert into exits table with number_plate
+    console.log('Inserting into exits table:', { entry_id, number_plate, exit_time, cost });
+    const [result] = await db.pool.query('INSERT INTO exits (entry_id, number_plate, exit_time, cost) VALUES (?, ?, ?, ?)', [entry_id, number_plate, exit_time, cost]);
+    const receiptNumber = result.insertId; // Get the auto-incremented ID of the exit record
+
+    // Update the entry status to 'Exited'
+    console.log('Updating entry status to Exited for ID:', entry_id);
     await db.pool.query('UPDATE entries SET status = "Exited" WHERE id = ?', [entry_id]);
 
     // Fetch remaining active entries (status = 'Active')
+    console.log('Fetching remaining active entries');
     const [entries] = await db.pool.query(`
       SELECT e.id, e.number_plate, e.entry_time, e.owner_name, e.phone, vc.name as category 
       FROM entries e 
@@ -1568,11 +1679,29 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
       WHERE e.status = 'Active'
     `);
 
+    // Prepare receipt data with additional details
+    const receipt = {
+      receipt_number: receiptNumber,
+      date: exit_time.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }),
+      vehicle_number: number_plate,
+      entry_time: entryDate.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }),
+      exit_time: exit_time.toLocaleString('en-US', { timeZone: 'Asia/Karachi' }),
+      duration: durationHours,
+      cost: cost.toFixed(2),
+      category: category_name,
+      owner_name: owner_name || 'N/A',
+      phone: phone || 'N/A',
+      added_by: added_by || 'Unknown'
+    };
+
+    console.log('Receipt data:', receipt);
+
     res.render('exit', { 
       entries, 
       error: null, 
       success: 'Vehicle exit processed successfully', 
-      user: req.session.admin 
+      user: req.session.admin,
+      receipt
     });
   } catch (err) {
     console.error('Exit error:', err);
@@ -1581,7 +1710,8 @@ app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
       entries: [], 
       error: 'Server error: ' + err.message, 
       success: null, 
-      user: req.session.admin 
+      user: req.session.admin,
+      receipt: null
     });
   }
 });
