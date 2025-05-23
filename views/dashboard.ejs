@@ -9,236 +9,511 @@
   <!-- Font Awesome for Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
   <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <!-- Chart.js CDN with Zoom Plugin -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.1/dist/chartjs-plugin-zoom.min.js"></script>
   <style>
+    :root {
+      --primary: #2c3b4e;
+      --secondary: #1a252f;
+      --accent: #dc3545;
+      --success: #28a745;
+      --background: #f4f6f9;
+      --card-bg: #ffffff;
+      --text-primary: #2c3b4e;
+      --text-secondary: #6c757d;
+    }
+
     body {
       font-family: 'Roboto', sans-serif;
-      background-color: #f4f6f9;
+      background-color: var(--background);
       margin: 0;
       padding: 0;
+      overflow-x: hidden;
     }
-    /* Sidebar Styles */
-    .sidebar {
+
+    /* Top Navigation Bar */
+    .top-nav {
       position: fixed;
       top: 0;
       left: 0;
-      height: 100%;
-      width: 250px;
-      background-color: #1a252f;
+      width: 100%;
+      height: 60px;
+      background: linear-gradient(90deg, var(--secondary) 0%, var(--primary) 100%);
       color: #ffffff;
-      padding-top: 20px;
-      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      z-index: 1000;
     }
-    .sidebar .navbar-brand {
+    .top-nav .brand {
       font-size: 1.5rem;
       font-weight: 700;
-      padding: 20px 30px;
-      display: block;
+      flex-grow: 1;
+    }
+    .top-nav .user-info {
+      display: flex;
+      align-items: center;
+    }
+    .top-nav .user-info span {
+      margin-right: 15px;
+      font-size: 1rem;
+    }
+    .top-nav .user-info a {
       color: #ffffff;
-      text-align: center;
-      border-bottom: 1px solid #2c3b4e;
+      text-decoration: none;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 5px;
+      transition: background-color 0.3s;
+    }
+    .top-nav .user-info a:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+    .top-nav .sidebar-toggle {
+      font-size: 1.5rem;
+      cursor: pointer;
+      margin-right: 20px;
+    }
+
+    /* Sidebar Styles */
+    .sidebar {
+      position: fixed;
+      top: 60px;
+      left: 0;
+      height: calc(100% - 60px);
+      width: 250px;
+      background: var(--secondary);
+      color: #ffffff;
+      padding-top: 20px;
+      transition: all 0.3s ease;
+      z-index: 999;
+    }
+    .sidebar.collapsed {
+      width: 70px;
     }
     .sidebar .nav-link {
       color: #a4b0be;
-      padding: 15px 30px;
-      font-size: 1.1rem;
+      padding: 15px 20px;
+      font-size: 1rem;
       display: flex;
       align-items: center;
-      transition: all 0.3s;
+      transition: all 0.3s ease;
     }
     .sidebar .nav-link i {
-      margin-right: 10px;
+      font-size: 1.2rem;
+      margin-right: 15px;
+      width: 20px;
+      text-align: center;
+    }
+    .sidebar.collapsed .nav-link i {
+      margin-right: 0;
+    }
+    .sidebar .nav-link span {
+      display: inline-block;
+      transition: opacity 0.3s ease;
+    }
+    .sidebar.collapsed .nav-link span {
+      display: none;
+      opacity: 0;
     }
     .sidebar .nav-link:hover, .sidebar .nav-link.active {
       color: #ffffff;
-      background-color: #2c3b4e;
+      background-color: var(--primary);
+      box-shadow: inset 4px 0 0 0 var(--accent);
     }
+    .sidebar.collapsed .nav-link:hover span, .sidebar.collapsed .nav-link.active span {
+      display: none;
+    }
+
     /* Main Content Styles */
     .main-content {
       margin-left: 250px;
+      margin-top: 60px;
       padding: 30px;
-      min-height: 100vh;
-      background-color: #f4f6f9;
+      min-height: calc(100vh - 60px);
+      transition: all 0.3s ease;
     }
+    .main-content.collapsed {
+      margin-left: 70px;
+    }
+
+    /* Page Header */
     .page-header {
       margin-bottom: 30px;
+      padding: 10px 0;
+      border-bottom: 2px solid var(--primary);
     }
     .page-header h2 {
       font-weight: 700;
-      color: #2c3b4e;
+      color: var(--text-primary);
+      margin: 0;
+      font-size: 1.8rem;
     }
+
     /* Card Styles */
     .metric-card {
-      background-color: #ffffff;
-      border-radius: 10px;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
       padding: 20px;
       margin-bottom: 20px;
-      transition: transform 0.3s;
+      border: 1px solid #e9ecef;
+      transition: all 0.3s ease;
     }
     .metric-card:hover {
-      transform: translateY(-5px);
+      transform: translateY(-3px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
     }
     .metric-card .card-title {
-      font-size: 1.2rem;
+      font-size: 1.1rem;
       font-weight: 500;
-      color: #666;
+      color: var(--text-secondary);
       margin-bottom: 10px;
+      text-transform: uppercase;
     }
     .metric-card .card-value {
       font-size: 2rem;
       font-weight: 700;
-      color: #2c3b4e;
+      color: var(--text-primary);
     }
     .metric-card .card-icon {
-      font-size: 2.5rem;
-      color: #2c3b4e;
+      font-size: 2rem;
+      color: var(--primary);
       opacity: 0.1;
       position: absolute;
-      right: 20px;
-      top: 20px;
+      right: 15px;
+      top: 15px;
     }
+
     /* Space Usage Styles */
     .space-usage .progress {
-      height: 20px;
-      border-radius: 10px;
+      height: 15px;
+      border-radius: 8px;
       margin-bottom: 10px;
+      background-color: #e9ecef;
     }
     .space-usage .progress-bar.available {
-      background-color: #28a745;
+      background: linear-gradient(90deg, var(--success) 0%, #34c759 100%);
+      transition: width 0.5s ease-in-out;
     }
     .space-usage .progress-bar.parked {
-      background-color: #dc3545;
+      background: linear-gradient(90deg, var(--accent) 0%, #e4606d 100%);
+      transition: width 0.5s ease-in-out;
     }
     .space-usage .progress-label {
       font-size: 0.9rem;
-      color: #666;
+      color: var(--text-secondary);
+      margin-bottom: 5px;
     }
+
     /* Filter Buttons */
+    .filter-buttons {
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
     .filter-buttons .btn {
-      margin: 0 5px;
-      border-radius: 20px;
       padding: 8px 20px;
+      font-size: 0.9rem;
       font-weight: 500;
-      transition: all 0.3s;
+      border-radius: 20px;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      border: none;
     }
     .filter-buttons .btn-primary {
-      background-color: #2c3b4e;
-      border-color: #2c3b4e;
+      background-color: var(--primary);
+      color: #ffffff;
     }
     .filter-buttons .btn-primary:hover {
       background-color: #3b4a5a;
-      border-color: #3b4a5a;
+      box-shadow: 0 4px 8px rgba(59, 74, 90, 0.3);
     }
     .filter-buttons .btn-secondary {
       background-color: #e9ecef;
-      color: #2c3b4e;
-      border-color: #e9ecef;
+      color: var(--text-primary);
     }
     .filter-buttons .btn-secondary:hover {
       background-color: #d3d7da;
-      border-color: #d3d7da;
+      box-shadow: 0 4px 8px rgba(211, 215, 218, 0.3);
     }
+
+    /* Graph Card Styles */
+    .graph-card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+      padding: 15px;
+      margin-bottom: 20px;
+      border: 1px solid #e9ecef;
+    }
+    .graph-card h5 {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 15px;
+      font-size: 1.2rem;
+    }
+    .graph-card canvas {
+      height: 300px !important; /* Fixed height for smaller chart */
+    }
+
+    /* Article Card Styles */
+    .article-card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+      padding: 15px;
+      margin-bottom: 20px;
+      border: 1px solid #e9ecef;
+    }
+    .article-card h5 {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 15px;
+      font-size: 1.2rem;
+    }
+    .article-card .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .article-card .metric-item {
+      display: flex;
+      align-items: center;
+      padding: 8px;
+      background: #f8f9fa;
+      border-radius: 5px;
+    }
+    .article-card .metric-item i {
+      color: var(--primary);
+      margin-right: 8px;
+      font-size: 1.2rem;
+    }
+    .article-card .metric-item span {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+    .article-card .highlight {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+    .article-card .trend {
+      font-weight: 500;
+      color: <%= earningsChange >= 0 ? '#28a745' : '#dc3545' %>;
+    }
+    .article-card p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    /* Recent Activity Card */
+    .activity-card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+      padding: 15px;
+      margin-bottom: 20px;
+      border: 1px solid #e9ecef;
+    }
+    .activity-card h5 {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 15px;
+      font-size: 1.2rem;
+    }
+    .activity-card table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .activity-card th, .activity-card td {
+      padding: 10px;
+      text-align: left;
+      font-size: 0.9rem;
+      border-bottom: 1px solid #e9ecef;
+    }
+    .activity-card th {
+      background-color: #f8f9fa;
+      color: var(--text-primary);
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+    .activity-card td {
+      color: var(--text-secondary);
+    }
+    .activity-card .action-entry {
+      color: var(--success);
+      font-weight: 500;
+    }
+    .activity-card .action-exit {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* Quick Stats Card */
+    .quick-stats-card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+      padding: 15px;
+      margin-bottom: 20px;
+      border: 1px solid #e9ecef;
+    }
+    .quick-stats-card h5 {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 15px;
+      font-size: 1.2rem;
+    }
+    .quick-stats-card .stat-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .quick-stats-card .stat-item i {
+      color: var(--primary);
+      margin-right: 8px;
+      font-size: 1.2rem;
+    }
+    .quick-stats-card .stat-item span {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+    .quick-stats-card .highlight {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    /* Footer Styles */
+    footer {
+      background: var(--secondary);
+      color: #a4b0be;
+      padding: 15px 0;
+      text-align: center;
+      border-top: 1px solid #2c3b4e;
+    }
+
     /* Responsive Design */
     @media (max-width: 768px) {
       .sidebar {
-        width: 200px;
-        transform: translateX(-200px);
-      }
-      .sidebar.active {
-        transform: translateX(0);
+        width: 70px;
       }
       .main-content {
+        margin-left: 70px;
+      }
+      .top-nav .brand {
+        font-size: 1.2rem;
+      }
+      .top-nav .user-info span {
+        display: none;
+      }
+      .metric-card .card-value {
+        font-size: 1.5rem;
+      }
+      .metric-card .card-icon {
+        font-size: 1.5rem;
+      }
+      .graph-card, .article-card, .activity-card, .quick-stats-card {
+        padding: 10px;
+      }
+      .filter-buttons {
+        flex-wrap: wrap;
+      }
+      .filter-buttons .btn {
+        padding: 6px 16px;
+        font-size: 0.85rem;
+      }
+      footer {
         margin-left: 0;
       }
-      .sidebar-toggle {
-        display: block;
-        position: fixed;
-        top: 15px;
-        left: 15px;
-        font-size: 1.5rem;
-        color: #2c3b4e;
-        cursor: pointer;
-        z-index: 1000;
+      .activity-card table {
+        font-size: 0.8rem;
       }
-    }
-    @media (min-width: 769px) {
-      .sidebar-toggle {
-        display: none;
+      .activity-card th, .activity-card td {
+        padding: 8px;
       }
     }
   </style>
 </head>
 <body>
-  <!-- Sidebar Toggle for Mobile -->
-  <i class="fas fa-bars sidebar-toggle"></i>
+  <!-- Top Navigation Bar -->
+  <div class="top-nav">
+    <i class="fas fa-bars sidebar-toggle"></i>
+    <a class="brand navbar-brand" href="/dashboard" style="color: white;">Badi Parking System</a>
+    <div class="user-info">
+      <span><i class="fas fa-user mr-2"></i><%= user.username %></span>
+      <a href="/logout"><i class="fas fa-sign-out-alt mr-2"></i>Logout</a>
+    </div>
+  </div>
 
   <!-- Sidebar -->
-  <nav class="sidebar">
-    <a class="navbar-brand" href="/dashboard">Badi Parking System</a>
+  <nav class="sidebar" id="sidebar">
     <ul class="nav flex-column">
       <% if (user) { %>
         <% if (user.permissions.entry || user.username === 'superadmin') { %>
           <li class="nav-item">
-            <a class="nav-link" href="/entry"><i class="fas fa-sign-in-alt"></i> Entry</a>
+            <a class="nav-link" href="/entry"><i class="fas fa-sign-in-alt"></i><span>Entry</span></a>
           </li>
         <% } %>
         <% if (user.permissions.exit || user.username === 'superadmin') { %>
           <li class="nav-item">
-            <a class="nav-link" href="/exit"><i class="fas fa-sign-out-alt"></i> Exit</a>
+            <a class="nav-link" href="/exit"><i class="fas fa-sign-out-alt"></i><span>Exit</span></a>
           </li>
         <% } %>
         <% if (user.permissions.manage || user.username === 'superadmin') { %>
           <li class="nav-item">
-            <a class="nav-link" href="/manage"><i class="fas fa-cogs"></i> Manage</a>
+            <a class="nav-link" href="/manage"><i class="fas fa-cogs"></i><span>Manage</span></a>
           </li>
         <% } %>
         <% if (user.permissions.profile || user.username === 'superadmin') { %>
           <li class="nav-item">
-            <a class="nav-link" href="/profile"><i class="fas fa-user"></i> Profile</a>
+            <a class="nav-link" href="/profile"><i class="fas fa-user"></i><span>Profile</span></a>
           </li>
         <% } %>
         <% if (user.permissions.add_admin || user.username === 'superadmin') { %>
           <li class="nav-item">
-            <a class="nav-link" href="/add-admin"><i class="fas fa-user-plus"></i> Add Admin</a>
+            <a class="nav-link" href="/add-admin"><i class="fas fa-user-plus"></i><span>Add Admin</span></a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="/manage-admins"><i class="fas fa-users-cog"></i> Manage Admins</a>
+            <a class="nav-link" href="/manage-admins"><i class="fas fa-users-cog"></i><span>Manage Admins</span></a>
           </li>
         <% } %>
-        <li class="nav-item">
-          <a class="nav-link" href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
-        </li>
       <% } %>
     </ul>
   </nav>
 
   <!-- Main Content -->
-  <div class="main-content">
+  <div class="main-content" id="main-content">
     <div class="page-header">
-      <h2>Dashboard</h2>
+      <h2>Dashboard Overview</h2>
     </div>
 
     <% if (error) { %>
       <div class="alert alert-danger text-center"><%= error %></div>
     <% } %>
 
+    <!-- Metrics Grid -->
     <div class="row">
-      <div class="col-md-4">
+      <div class="col-lg-4 col-md-6">
         <div class="metric-card position-relative">
           <i class="fas fa-car card-icon"></i>
           <h5 class="card-title">Vehicles (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h5>
           <p class="card-value"><%= vehicles %></p>
         </div>
       </div>
-      <div class="col-md-4">
+      <div class="col-lg-4 col-md-6">
         <div class="metric-card position-relative">
           <i class="fas fa-money-bill-wave card-icon"></i>
           <h5 class="card-title">Earnings (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h5>
           <p class="card-value">PKR <%= (Number(earnings) || 0).toFixed(2) %></p>
         </div>
       </div>
-      <div class="col-md-4">
+      <div class="col-lg-4 col-md-6">
         <div class="metric-card position-relative">
           <i class="fas fa-parking card-icon"></i>
           <h5 class="card-title">Space Usage</h5>
@@ -256,26 +531,261 @@
       </div>
     </div>
 
-    <div class="filter-buttons text-center">
+    <!-- Filter Buttons -->
+    <div class="filter-buttons">
       <a href="/dashboard?filter=today" class="btn btn-<%= filter === 'today' ? 'primary' : 'secondary' %>">Today</a>
       <a href="/dashboard?filter=weekly" class="btn btn-<%= filter === 'weekly' ? 'primary' : 'secondary' %>">Weekly</a>
       <a href="/dashboard?filter=monthly" class="btn btn-<%= filter === 'monthly' ? 'primary' : 'secondary' %>">Monthly</a>
     </div>
+
+    <!-- Graph and Quick Stats Row -->
+    <div class="row">
+      <div class="col-lg-8">
+        <div class="graph-card">
+          <h5>Performance Trend (<%= filter.charAt(0).toUpperCase() + filter.slice(1) %>)</h5>
+          <canvas id="performanceChart"></canvas>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="quick-stats-card">
+          <h5>Quick Stats</h5>
+          <div class="stat-item">
+            <i class="fas fa-coins"></i>
+            <span><span class="highlight">Avg. Earnings/Vehicle:</span> PKR <%= quickStats.avgEarningsPerVehicle %></span>
+          </div>
+          <div class="stat-item">
+            <i class="fas fa-clock"></i>
+            <span><span class="highlight">Busiest <%= filter === 'today' ? 'Hour' : 'Day' %>:</span> <%= quickStats.busiestPeriod %> (<%= quickStats.busiestCount %> vehicles)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Article/Report Section -->
+    <div class="row">
+      <div class="col-lg-6">
+        <div class="article-card">
+          <h5>Performance Report</h5>
+          <div class="metric-grid">
+            <div class="metric-item">
+              <i class="fas fa-car"></i>
+              <span><span class="highlight">Total Vehicles:</span> <%= vehicles %></span>
+            </div>
+            <div class="metric-item">
+              <i class="fas fa-money-bill-wave"></i>
+              <span><span class="highlight">Total Earnings:</span> PKR <%= (Number(earnings) || 0).toFixed(2) %></span>
+            </div>
+            <div class="metric-item">
+              <i class="fas fa-parking"></i>
+              <span><span class="highlight">Occupancy Rate:</span> <%= totalSpaces > 0 ? (((totalSpaces - available) / totalSpaces) * 100).toFixed(1) : 0 %>%</span>
+            </div>
+          </div>
+          <p>
+            Earnings Trend: <span class="trend"><%= earningsChange >= 0 ? '+' : '' %><%= earningsChange %>%</span> compared to the previous period. Monitor the graph above to analyze vehicle entries and revenue patterns.
+          </p>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="activity-card">
+          <h5>Recent Activity</h5>
+          <table>
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Vehicle</th>
+                <th>Time</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% recentActivity.forEach(activity => { %>
+                <tr>
+                  <td class="action-<%= activity.action.toLowerCase() %>"><%= activity.action %></td>
+                  <td><%= activity.vehicle_number %></td>
+                  <td><%= new Date(activity.time).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }) %></td>
+                  <td><%= activity.details %></td>
+                </tr>
+              <% }) %>
+              <% if (recentActivity.length === 0) { %>
+                <tr>
+                  <td colspan="4" class="text-center">No recent activity</td>
+                </tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Footer -->
-  <footer class="bg-dark text-white text-center py-3 mt-4" style="position: fixed; bottom: 0; width: calc(100% - 250px); margin-left: 250px;">
+  <footer>
     <p>© <%= new Date().getFullYear() %> Badi Parking Management System. All rights reserved.</p>
   </footer>
 
-  <!-- Bootstrap JS and Sidebar Toggle Script -->
+  <!-- Bootstrap JS and Scripts -->
   <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     $(document).ready(function() {
+      // Sidebar Toggle
       $('.sidebar-toggle').click(function() {
-        $('.sidebar').toggleClass('active');
+        $('#sidebar').toggleClass('collapsed');
+        $('#main-content').toggleClass('collapsed');
       });
+
+      // Initialize Chart.js Line Graph with Smaller Size
+      const ctx = document.getElementById('performanceChart').getContext('2d');
+      const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: <%- JSON.stringify(graphData.labels) %>,
+          datasets: [
+            {
+              label: 'Vehicles',
+              data: <%- JSON.stringify(graphData.vehicles) %>,
+              borderColor: '#2c3b4e',
+              backgroundColor: 'rgba(44, 59, 78, 0.1)',
+              fill: true,
+              tension: 0.4,
+              borderWidth: 2,
+              pointBackgroundColor: '#2c3b4e',
+              pointBorderColor: '#ffffff',
+              pointBorderWidth: 1,
+              pointRadius: 3,
+              pointHoverRadius: 5
+            },
+            {
+              label: 'Earnings (PKR)',
+              data: <%- JSON.stringify(graphData.earnings) %>,
+              borderColor: '#dc3545',
+              backgroundColor: 'rgba(220, 53, 69, 0.1)',
+              fill: true,
+              tension: 0.4,
+              borderWidth: 2,
+              pointBackgroundColor: '#dc3545',
+              pointBorderColor: '#ffffff',
+              pointBorderWidth: 1,
+              pointRadius: 3,
+              pointHoverRadius: 5
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false, // Allow custom height
+          animation: {
+            duration: 1000,
+            easing: 'easeOutCubic'
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Values',
+                font: {
+                  family: 'Roboto',
+                  size: 12,
+                  weight: '500'
+                },
+                color: '#2c3b4e'
+              },
+              ticks: {
+                font: {
+                  family: 'Roboto',
+                  size: 10
+                },
+                color: '#6c757d'
+              },
+              grid: {
+                color: 'rgba(0, 0, 0, 0.05)'
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: '<%= filter === "today" ? "Time (Hourly)" : "Date" %>',
+                font: {
+                  family: 'Roboto',
+                  size: 12,
+                  weight: '500'
+                },
+                color: '#2c3b4e'
+              },
+              ticks: {
+                font: {
+                  family: 'Roboto',
+                  size: 10
+                },
+                color: '#6c757d',
+                maxRotation: 45,
+                minRotation: 45
+              },
+              grid: {
+                display: false
+              }
+            }
+          },
+          plugins: {
+            legend: {
+              labels: {
+                font: {
+                  family: 'Roboto',
+                  size: 10
+                },
+                color: '#2c3b4e',
+                padding: 15,
+                usePointStyle: true
+              }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(44, 59, 78, 0.9)',
+              titleFont: {
+                family: 'Roboto',
+                size: 10,
+                weight: '500'
+              },
+              bodyFont: {
+                family: 'Roboto',
+                size: 10
+              },
+              padding: 8,
+              cornerRadius: 5
+            },
+            zoom: {
+              zoom: {
+                wheel: {
+                  enabled: <%= filter === 'monthly' ? 'true' : 'false' %>
+                },
+                pinch: {
+                  enabled: <%= filter === 'monthly' ? 'true' : 'false' %>
+                },
+                mode: 'x'
+              },
+              pan: {
+                enabled: <%= filter === 'monthly' ? 'true' : 'false' %>,
+                mode: 'x'
+              }
+            }
+          },
+          interaction: {
+            mode: 'nearest',
+            intersect: false
+          }
+        }
+      });
+
+      // Add click event to toggle datasets
+      document.getElementById('performanceChart').onclick = function(evt) {
+        const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+        if (points.length) {
+          const datasetIndex = points[0].datasetIndex;
+          const meta = chart.getDatasetMeta(datasetIndex);
+          meta.hidden = !meta.hidden;
+          chart.update();
+        }
+      };
     });
   </script>
 </body>

@@ -3,54 +3,475 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Badi Print Management System</title>
+  <title><%= pageTitle || 'Badi Parking Management System' %></title>
   <!-- Bootstrap CSS -->
   <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-  <!-- Custom CSS -->
-  <link rel="stylesheet" href="/css/styles.css">
+  <!-- Font Awesome for Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <!-- Chart.js CDN with Zoom Plugin (for dashboard) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.1/dist/chartjs-plugin-zoom.min.js"></script>
+  <style>
+    :root {
+      --primary: #2c3b4e;
+      --secondary: #1a252f;
+      --accent: #dc3545;
+      --success: #28a745;
+      --background: #f4f6f9;
+      --card-bg: #ffffff;
+      --text-primary: #2c3b4e;
+      --text-secondary: #6c757d;
+    }
+
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: var(--background);
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    /* Top Navigation Bar */
+    .top-nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 60px;
+      background: linear-gradient(90deg, var(--secondary) 0%, var(--primary) 100%);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      z-index: 1000;
+    }
+    .top-nav .brand {
+      font-size: 1.5rem;
+      font-weight: 700;
+      flex-grow: 1;
+      display: flex;
+      align-items: center;
+    }
+    .top-nav .brand img {
+      height: 40px;
+      margin-right: 10px;
+    }
+    .top-nav .user-info {
+      display: flex;
+      align-items: center;
+    }
+    .top-nav .user-info span {
+      margin-right: 15px;
+      font-size: 1rem;
+    }
+    .top-nav .user-info a {
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 5px;
+      transition: background-color 0.3s;
+    }
+    .top-nav .user-info a:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+    .top-nav .sidebar-toggle {
+      font-size: 1.5rem;
+      cursor: pointer;
+      margin-right: 20px;
+    }
+
+    /* Sidebar Styles */
+    .sidebar {
+      position: fixed;
+      top: 60px;
+      left: 0;
+      height: calc(100% - 60px);
+      width: 250px;
+      background: var(--secondary);
+      color: #ffffff;
+      padding-top: 20px;
+      transition: all 0.3s ease;
+      z-index: 999;
+    }
+    .sidebar.collapsed {
+      width: 70px;
+    }
+    .sidebar .nav-link {
+      color: #a4b0be;
+      padding: 15px 20px;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+    .sidebar .nav-link i {
+      font-size: 1.2rem;
+      margin-right: 15px;
+      width: 20px;
+      text-align: center;
+    }
+    .sidebar.collapsed .nav-link i {
+      margin-right: 0;
+    }
+    .sidebar .nav-link span {
+      display: inline-block;
+      transition: opacity 0.3s ease;
+    }
+    .sidebar.collapsed .nav-link span {
+      display: none;
+      opacity: 0;
+    }
+    .sidebar .nav-link:hover, .sidebar .nav-link.active {
+      color: #ffffff;
+      background-color: var(--primary);
+      box-shadow: inset 4px 0 0 0 var(--accent);
+    }
+    .sidebar.collapsed .nav-link:hover span, .sidebar.collapsed .nav-link.active span {
+      display: none;
+    }
+
+    /* Main Content Styles */
+    .main-content {
+      margin-left: 250px;
+      margin-top: 60px;
+      padding: 30px;
+      min-height: calc(100vh - 60px);
+      transition: all 0.3s ease;
+    }
+    .main-content.collapsed {
+      margin-left: 70px;
+    }
+    .main-content.no-sidebar {
+      margin-left: 0;
+    }
+
+    /* Page Header */
+    .page-header {
+      margin-bottom: 30px;
+      padding: 10px 0;
+      border-bottom: 2px solid var(--primary);
+    }
+    .page-header h2 {
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0;
+      font-size: 1.8rem;
+    }
+
+    /* Card Styles */
+    .metric-card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid #e9ecef;
+      transition: all 0.3s ease;
+    }
+    .metric-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+    }
+    .metric-card .card-title {
+      font-size: 1.1rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+    }
+    .metric-card .card-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .metric-card .card-icon {
+      font-size: 2rem;
+      color: var(--primary);
+      opacity: 0.1;
+      position: absolute;
+      right: 15px;
+      top: 15px;
+    }
+
+    /* Space Usage Styles */
+    .space-usage .progress {
+      height: 15px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      background-color: #e9ecef;
+    }
+    .space-usage .progress-bar.available {
+      background: linear-gradient(90deg, var(--success) 0%, #34c759 100%);
+      transition: width 0.5s ease-in-out;
+    }
+    .space-usage .progress-bar.parked {
+      background: linear-gradient(90deg, var(--accent) 0%, #e4606d 100%);
+      transition: width 0.5s ease-in-out;
+    }
+    .space-usage .progress-label {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      margin-bottom: 5px;
+    }
+
+    /* Filter Buttons */
+    .filter-buttons {
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+    .filter-buttons .btn {
+      padding: 8px 20px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      border-radius: 20px;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      border: none;
+    }
+    .filter-buttons .btn-primary {
+      background-color: var(--primary);
+      color: #ffffff;
+    }
+    .filter-buttons .btn-primary:hover {
+      background-color: #3b4a5a;
+      box-shadow: 0 4px 8px rgba(59, 74, 90, 0.3);
+    }
+    .filter-buttons .btn-secondary {
+      background-color: #e9ecef;
+      color: var(--text-primary);
+    }
+    .filter-buttons .btn-secondary:hover {
+      background-color: #d3d7da;
+      box-shadow: 0 4px 8px rgba(211, 215, 218, 0.3);
+    }
+
+    /* Graph Card Styles */
+    .graph-card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+      padding: 15px;
+      margin-bottom: 20px;
+      border: 1px solid #e9ecef;
+    }
+    .graph-card h5 {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 15px;
+      font-size: 1.2rem;
+    }
+    .graph-card canvas {
+      height: 300px !important; /* Fixed height for smaller chart */
+    }
+
+    /* Article Card Styles */
+    .article-card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+      padding: 15px;
+      margin-bottom: 20px;
+      border: 1px solid #e9ecef;
+    }
+    .article-card h5 {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 15px;
+      font-size: 1.2rem;
+    }
+    .article-card .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .article-card .metric-item {
+      display: flex;
+      align-items: center;
+      padding: 8px;
+      background: #f8f9fa;
+      border-radius: 5px;
+    }
+    .article-card .metric-item i {
+      color: var(--primary);
+      margin-right: 8px;
+      font-size: 1.2rem;
+    }
+    .article-card .metric-item span {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+    .article-card .highlight {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+    .article-card .trend {
+      font-weight: 500;
+      color: <%= earningsChange >= 0 ? '#28a745' : '#dc3545' %>;
+    }
+    .article-card p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    /* Recent Activity Card */
+    .activity-card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+      padding: 15px;
+      margin-bottom: 20px;
+      border: 1px solid #e9ecef;
+    }
+    .activity-card h5 {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 15px;
+      font-size: 1.2rem;
+    }
+    .activity-card table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .activity-card th, .activity-card td {
+      padding: 10px;
+      text-align: left;
+      font-size: 0.9rem;
+      border-bottom: 1px solid #e9ecef;
+    }
+    .activity-card th {
+      background-color: #f8f9fa;
+      color: var(--text-primary);
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+    .activity-card td {
+      color: var(--text-secondary);
+    }
+    .activity-card .action-entry {
+      color: var(--success);
+      font-weight: 500;
+    }
+    .activity-card .action-exit {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* Quick Stats Card */
+    .quick-stats-card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+      padding: 15px;
+      margin-bottom: 20px;
+      border: 1px solid #e9ecef;
+    }
+    .quick-stats-card h5 {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 15px;
+      font-size: 1.2rem;
+    }
+    .quick-stats-card .stat-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .quick-stats-card .stat-item i {
+      color: var(--primary);
+      margin-right: 8px;
+      font-size: 1.2rem;
+    }
+    .quick-stats-card .stat-item span {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+    .quick-stats-card .highlight {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    /* Footer Styles */
+    footer {
+      background: var(--secondary);
+      color: #a4b0be;
+      padding: 15px 0;
+      text-align: center;
+      border-top: 1px solid #2c3b4e;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 70px;
+      }
+      .main-content {
+        margin-left: 70px;
+      }
+      .main-content.no-sidebar {
+        margin-left: 0;
+      }
+      .top-nav .brand {
+        font-size: 1.2rem;
+      }
+      .top-nav .brand img {
+        height: 30px;
+      }
+      .top-nav .user-info span {
+        display: none;
+      }
+      .metric-card .card-value {
+        font-size: 1.5rem;
+      }
+      .metric-card .card-icon {
+        font-size: 1.5rem;
+      }
+      .graph-card, .article-card, .activity-card, .quick-stats-card {
+        padding: 10px;
+      }
+      .filter-buttons {
+        flex-wrap: wrap;
+      }
+      .filter-buttons .btn {
+        padding: 6px 16px;
+        font-size: 0.85rem;
+      }
+      footer {
+        margin-left: 0;
+      }
+      .activity-card table {
+        font-size: 0.8rem;
+      }
+      .activity-card th, .activity-card td {
+        padding: 8px;
+      }
+    }
+  </style>
 </head>
 <body>
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <a class="navbar-brand" href="/dashboard">Badi Print Management System</a>
-    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-      <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="navbarNav">
-      <ul class="navbar-nav ml-auto">
-        <% if (user) { %>
-          <% if (user.permissions.entry || user.username === 'superadmin') { %>
-            <li class="nav-item">
-              <a class="nav-link" href="/entry">Entry</a>
-            </li>
-          <% } %>
-          <% if (user.permissions.exit || user.username === 'superadmin') { %>
-            <li class="nav-item">
-              <a class="nav-link" href="/exit">Exit</a>
-            </li>
-          <% } %>
-          <% if (user.permissions.manage || user.username === 'superadmin') { %>
-            <li class="nav-item">
-              <a class="nav-link" href="/manage">Manage</a>
-            </li>
-          <% } %>
-          <% if (user.permissions.profile || user.username === 'superadmin') { %>
-            <li class="nav-item">
-              <a class="nav-link" href="/profile">Profile</a>
-            </li>
-          <% } %>
-          <% if (user.permissions.add_admin || user.username === 'superadmin') { %>
-            <li class="nav-item">
-              <a class="nav-link" href="/add-admin">Add Admin</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="/manage-admins">Manage Admins</a>
-            </li>
-          <% } %>
-          <li class="nav-item">
-            <a class="nav-link" href="/logout">Logout</a>
-          </li>
-        <% } %>
-      </ul>
+  <!-- Top Navigation Bar -->
+  <div class="top-nav">
+    <% if (user) { %>
+      <i class="fas fa-bars sidebar-toggle"></i>
+    <% } %>
+    <div class="brand">
+      <img src="/logo.png" alt="Badi Parking System Logo"> <!-- Replace with your logo file -->
+      Badi Parking System
+      <% if (user && user.username === 'superadmin') { %>
+        <span style="font-size: 0.9rem; margin-left: 10px; opacity: 0.8;">(Superadmin)</span>
+      <% } %>
     </div>
-  </nav>
-  <div class="container mt-4">
+    <% if (user) { %>
+      <div class="user-info">
+        <span><i class="fas fa-user mr-2"></i><%= user.username %></span>
+        <a href="/logout"><i class="fas fa-sign-out-alt mr-2"></i>Logout</a>
+      </div>
+    <% } %>
+  </div>

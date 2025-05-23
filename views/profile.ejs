@@ -11,23 +11,85 @@
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --primary: #2c3b4e;
+      --secondary: #1a252f;
+      --accent: #dc3545;
+      --success: #28a745;
+      --background: #f4f6f9;
+      --card-bg: #ffffff;
+      --text-primary: #2c3b4e;
+      --text-secondary: #6c757d;
+    }
+
     body {
       font-family: 'Roboto', sans-serif;
-      background-color: #f4f6f9;
+      background-color: var(--background);
       margin: 0;
       padding: 0;
+      overflow-x: hidden;
     }
-    /* Sidebar Styles */
-    .sidebar {
+
+    /* Top Navigation Bar */
+    .top-nav {
       position: fixed;
       top: 0;
       left: 0;
-      height: 100%;
+      width: 100%;
+      height: 60px;
+      background: linear-gradient(90deg, var(--secondary) 0%, var(--primary) 100%);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      z-index: 1000;
+    }
+    .top-nav .brand {
+      font-size: 1.5rem;
+      font-weight: 700;
+      flex-grow: 1;
+    }
+    .top-nav .user-info {
+      display: flex;
+      align-items: center;
+    }
+    .top-nav .user-info span {
+      margin-right: 15px;
+      font-size: 1rem;
+    }
+    .top-nav .user-info a {
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 5px;
+      transition: background-color 0.3s;
+    }
+    .top-nav .user-info a:hover {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+    .top-nav .sidebar-toggle {
+      font-size: 1.5rem;
+      cursor: pointer;
+      margin-right: 20px;
+    }
+
+    /* Sidebar Styles */
+    .sidebar {
+      position: fixed;
+      top: 60px;
+      left: 0;
+      height: calc(100% - 60px);
       width: 250px;
-      background-color: #1a252f;
+      background: var(--secondary);
       color: #ffffff;
       padding-top: 20px;
-      transition: all 0.3s;
+      transition: all 0.3s ease;
+      z-index: 999;
+    }
+    .sidebar.collapsed {
+      width: 70px;
     }
     .sidebar .navbar-brand {
       font-size: 1.5rem;
@@ -40,36 +102,61 @@
     }
     .sidebar .nav-link {
       color: #a4b0be;
-      padding: 15px 30px;
-      font-size: 1.1rem;
+      padding: 15px 20px;
+      font-size: 1rem;
       display: flex;
       align-items: center;
-      transition: all 0.3s;
+      transition: all 0.3s ease;
     }
     .sidebar .nav-link i {
-      margin-right: 10px;
+      font-size: 1.2rem;
+      margin-right: 15px;
+      width: 20px;
+      text-align: center;
+    }
+    .sidebar.collapsed .nav-link i {
+      margin-right: 0;
+    }
+    .sidebar .nav-link span {
+      display: inline-block;
+      transition: opacity 0.3s ease;
+    }
+    .sidebar.collapsed .nav-link span {
+      display: none;
+      opacity: 0;
     }
     .sidebar .nav-link:hover, .sidebar .nav-link.active {
       color: #ffffff;
-      background-color: #2c3b4e;
+      background-color: var(--primary);
+      box-shadow: inset 4px 0 0 0 var(--accent);
     }
+    .sidebar.collapsed .nav-link:hover span, .sidebar.collapsed .nav-link.active span {
+      display: none;
+    }
+
     /* Main Content Styles */
     .main-content {
       margin-left: 250px;
+      margin-top: 60px;
       padding: 30px;
-      min-height: 100vh;
-      background-color: #f4f6f9;
+      min-height: calc(100vh - 60px);
+      background-color: var(--background);
+      transition: all 0.3s ease;
+    }
+    .main-content.collapsed {
+      margin-left: 70px;
     }
     .page-header {
       margin-bottom: 30px;
     }
     .page-header h2 {
       font-weight: 700;
-      color: #2c3b4e;
+      color: var(--text-primary);
     }
+
     /* Form Styles */
     .profile-card {
-      background-color: #ffffff;
+      background-color: var(--card-bg);
       border-radius: 10px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       padding: 30px;
@@ -81,7 +168,7 @@
     }
     .profile-card .form-group label {
       font-weight: 500;
-      color: #2c3b4e;
+      color: var(--text-primary);
       margin-bottom: 5px;
       display: block;
     }
@@ -93,12 +180,12 @@
       transition: border-color 0.3s;
     }
     .profile-card .form-control:focus {
-      border-color: #2c3b4e;
+      border-color: var(--primary);
       box-shadow: 0 0 5px rgba(44, 59, 78, 0.2);
     }
     .profile-card .btn-primary {
-      background-color: #2c3b4e;
-      border-color: #2c3b4e;
+      background-color: var(--primary);
+      border-color: var(--primary);
       padding: 10px 20px;
       font-weight: 500;
       border-radius: 5px;
@@ -109,90 +196,94 @@
       background-color: #3b4a5a;
       border-color: #3b4a5a;
     }
+
     /* Validation Errors and Success Messages */
     .alert {
       border-radius: 5px;
       margin-bottom: 20px;
     }
+
+    /* Footer Styles */
+    footer {
+      background: var(--secondary);
+      color: #a4b0be;
+      padding: 15px 0;
+      text-align: center;
+      border-top: 1px solid #2c3b4e;
+    }
+
     /* Responsive Design */
     @media (max-width: 768px) {
       .sidebar {
-        width: 200px;
-        transform: translateX(-200px);
-      }
-      .sidebar.active {
-        transform: translateX(0);
+        width: 70px;
       }
       .main-content {
-        margin-left: 0;
+        margin-left: 70px;
       }
-      .sidebar-toggle {
-        display: block;
-        position: fixed;
-        top: 15px;
-        left: 15px;
-        font-size: 1.5rem;
-        color: #2c3b4e;
-        cursor: pointer;
-        z-index: 1000;
+      .top-nav .brand {
+        font-size: 1.2rem;
+      }
+      .top-nav .user-info span {
+        display: none;
       }
       .profile-card {
         padding: 20px;
       }
-    }
-    @media (min-width: 769px) {
-      .sidebar-toggle {
-        display: none;
+      footer {
+        margin-left: 0;
       }
     }
   </style>
 </head>
 <body>
-  <!-- Sidebar Toggle for Mobile -->
-  <i class="fas fa-bars sidebar-toggle"></i>
+  <!-- Top Navigation Bar -->
+  <div class="top-nav">
+    <i class="fas fa-bars sidebar-toggle"></i>
+    <a class="brand navbar-brand" href="/dashboard" style="color: white;">Badi Parking System</a>
+    <div class="user-info">
+      <span><i class="fas fa-user mr-2"></i><%= user.username %></span>
+      <a href="/logout"><i class="fas fa-sign-out-alt mr-2"></i>Logout</a>
+    </div>
+  </div>
 
   <!-- Sidebar -->
-  <nav class="sidebar">
-    <a class="navbar-brand" href="/dashboard">Badi Parking System</a>
+  <nav class="sidebar" id="sidebar">
     <ul class="nav flex-column">
       <% if (user) { %>
         <% if (user.permissions.entry || user.username === 'superadmin') { %>
           <li class="nav-item">
-            <a class="nav-link" href="/entry"><i class="fas fa-sign-in-alt"></i> Entry</a>
+            <a class="nav-link" href="/entry"><i class="fas fa-sign-in-alt"></i><span>Entry</span></a>
           </li>
         <% } %>
         <% if (user.permissions.exit || user.username === 'superadmin') { %>
           <li class="nav-item">
-            <a class="nav-link" href="/exit"><i class="fas fa-sign-out-alt"></i> Exit</a>
+            <a class="nav-link" href="/exit"><i class="fas fa-sign-out-alt"></i><span>Exit</span></a>
           </li>
         <% } %>
         <% if (user.permissions.manage || user.username === 'superadmin') { %>
           <li class="nav-item">
-            <a class="nav-link" href="/manage"><i class="fas fa-cogs"></i> Manage</a>
+            <a class="nav-link" href="/manage"><i class="fas fa-cogs"></i><span>Manage</span></a>
           </li>
         <% } %>
         <% if (user.permissions.profile || user.username === 'superadmin') { %>
           <li class="nav-item">
-            <a class="nav-link active" href="/profile"><i class="fas fa-user"></i> Profile</a>
+            <a class="nav-link active" href="/profile"><i class="fas fa-user"></i><span>Profile</span></a>
           </li>
         <% } %>
         <% if (user.permissions.add_admin || user.username === 'superadmin') { %>
           <li class="nav-item">
-            <a class="nav-link" href="/add-admin"><i class="fas fa-user-plus"></i> Add Admin</a>
+            <a class="nav-link" href="/add-admin"><i class="fas fa-user-plus"></i><span>Add Admin</span></a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="/manage-admins"><i class="fas fa-users-cog"></i> Manage Admins</a>
+            <a class="nav-link" href="/manage-admins"><i class="fas fa-users-cog"></i><span>Manage Admins</span></a>
           </li>
         <% } %>
-        <li class="nav-item">
-          <a class="nav-link" href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
-        </li>
       <% } %>
     </ul>
   </nav>
 
   <!-- Main Content -->
-  <div class="main-content">
+  <div class="main-content" id="main-content">
     <div class="page-header">
       <h2>Your Profile</h2>
     </div>
@@ -232,7 +323,7 @@
   </div>
 
   <!-- Footer -->
-  <footer class="bg-dark text-white text-center py-3 mt-4" style="position: fixed; bottom: 0; width: calc(100% - 250px); margin-left: 250px;">
+  <footer>
     <p>© <%= new Date().getFullYear() %> Badi Parking Management System. All rights reserved.</p>
   </footer>
 
@@ -242,7 +333,8 @@
   <script>
     $(document).ready(function() {
       $('.sidebar-toggle').click(function() {
-        $('.sidebar').toggleClass('active');
+        $('.sidebar').toggleClass('collapsed');
+        $('.main-content').toggleClass('collapsed');
       });
     });
   </script>

@@ -359,23 +359,174 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     const user = req.session.admin;
     const filter = req.query.filter || 'today';
     let dateCondition = '';
+    let graphLabels = [];
+    let vehiclesData = [];
+    let earningsData = [];
+    let earningsChange = 0;
+    let recentActivity = [];
+    let quickStats = { avgEarningsPerVehicle: 0, busiestPeriod: 'N/A', busiestCount: 0 };
 
     // Set today’s date in PKT (Node.js is already in PKT)
     const today = new Date();
-    // Format the date to YYYY-MM-DD in PKT
     const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0'); // Months are 0-based, so add 1
+    const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
     const todayPKTDateStr = `${year}-${month}-${day}`; // e.g., "2025-05-23"
     console.log('Today’s date (PKT):', todayPKTDateStr);
 
-    // Adjust date condition for vehicles and earnings
+    // Adjust date condition and prepare graph data
     if (filter === 'weekly') {
       dateCondition = `>= DATE_SUB('${todayPKTDateStr}', INTERVAL 7 DAY)`;
+      // Generate labels for the past 7 days (e.g., "May 17", "May 18", ..., "May 23")
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - i);
+        const label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        graphLabels.push(label);
+      }
+      // Fetch daily vehicle counts (non-exited + exited)
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - i);
+        const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        const dailyCondition = `BETWEEN '${dateStr} 00:00:00' AND '${dateStr} 23:59:59'`;
+        const [nonExited] = await db.pool.query(
+          `SELECT COUNT(*) as count FROM entries WHERE entry_time ${dailyCondition}`
+        );
+        const [exited] = await db.pool.query(
+          `SELECT COUNT(*) as count FROM exits WHERE exit_time ${dailyCondition}`
+        );
+        const [dailyEarnings] = await db.pool.query(
+          `SELECT COALESCE(SUM(cost), 0) as total FROM exits WHERE exit_time ${dailyCondition}`
+        );
+        vehiclesData.push((nonExited[0].count || 0) + (exited[0].count || 0));
+        earningsData.push(Number(dailyEarnings[0].total) || 0);
+      }
+      // Calculate earnings for the previous 7-day period (May 10–16)
+      const prevStartDate = new Date(today);
+      prevStartDate.setDate(today.getDate() - 13);
+      const prevEndDate = new Date(today);
+      prevEndDate.setDate(today.getDate() - 7);
+      const prevStartStr = `${prevStartDate.getFullYear()}-${String(prevStartDate.getMonth() + 1).padStart(2, '0')}-${String(prevStartDate.getDate()).padStart(2, '0')}`;
+      const prevEndStr = `${prevEndDate.getFullYear()}-${String(prevEndDate.getMonth() + 1).padStart(2, '0')}-${String(prevEndDate.getDate()).padStart(2, '0')}`;
+      const prevCondition = `BETWEEN '${prevStartStr} 00:00:00' AND '${prevEndStr} 23:59:59'`;
+      const [prevEarnings] = await db.pool.query(
+        `SELECT COALESCE(SUM(cost), 0) as total FROM exits WHERE exit_time ${prevCondition}`
+      );
+      const currentEarnings = earningsData.reduce((sum, val) => sum + val, 0);
+      const prevEarningsValue = Number(prevEarnings[0].total) || 0;
+      earningsChange = prevEarningsValue > 0 ? ((currentEarnings - prevEarningsValue) / prevEarningsValue) * 100 : currentEarnings > 0 ? 100 : 0;
+
+      // Find the busiest day (most vehicles)
+      let maxVehicles = 0;
+      let busiestDay = 'N/A';
+      for (let i = 0; i < graphLabels.length; i++) {
+        if (vehiclesData[i] > maxVehicles) {
+          maxVehicles = vehiclesData[i];
+          busiestDay = graphLabels[i];
+        }
+      }
+      quickStats.busiestPeriod = busiestDay;
+      quickStats.busiestCount = maxVehicles;
     } else if (filter === 'monthly') {
       dateCondition = `>= DATE_SUB('${todayPKTDateStr}', INTERVAL 30 DAY)`;
+      // Generate labels for the past 30 days (e.g., "Apr 24", "Apr 25", ..., "May 23")
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - i);
+        const label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        graphLabels.push(label);
+      }
+      // Fetch daily vehicle counts
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - i);
+        const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        const dailyCondition = `BETWEEN '${dateStr} 00:00:00' AND '${dateStr} 23:59:59'`;
+        const [nonExited] = await db.pool.query(
+          `SELECT COUNT(*) as count FROM entries WHERE entry_time ${dailyCondition}`
+        );
+        const [exited] = await db.pool.query(
+          `SELECT COUNT(*) as count FROM exits WHERE exit_time ${dailyCondition}`
+        );
+        const [dailyEarnings] = await db.pool.query(
+          `SELECT COALESCE(SUM(cost), 0) as total FROM exits WHERE exit_time ${dailyCondition}`
+        );
+        vehiclesData.push((nonExited[0].count || 0) + (exited[0].count || 0));
+        earningsData.push(Number(dailyEarnings[0].total) || 0);
+      }
+      // Calculate earnings for the previous 30-day period (Mar 25–Apr 23)
+      const prevStartDate = new Date(today);
+      prevStartDate.setDate(today.getDate() - 59);
+      const prevEndDate = new Date(today);
+      prevEndDate.setDate(today.getDate() - 30);
+      const prevStartStr = `${prevStartDate.getFullYear()}-${String(prevStartDate.getMonth() + 1).padStart(2, '0')}-${String(prevStartDate.getDate()).padStart(2, '0')}`;
+      const prevEndStr = `${prevEndDate.getFullYear()}-${String(prevEndDate.getMonth() + 1).padStart(2, '0')}-${String(prevEndDate.getDate()).padStart(2, '0')}`;
+      const prevCondition = `BETWEEN '${prevStartStr} 00:00:00' AND '${prevEndStr} 23:59:59'`;
+      const [prevEarnings] = await db.pool.query(
+        `SELECT COALESCE(SUM(cost), 0) as total FROM exits WHERE exit_time ${prevCondition}`
+      );
+      const currentEarnings = earningsData.reduce((sum, val) => sum + val, 0);
+      const prevEarningsValue = Number(prevEarnings[0].total) || 0;
+      earningsChange = prevEarningsValue > 0 ? ((currentEarnings - prevEarningsValue) / prevEarningsValue) * 100 : currentEarnings > 0 ? 100 : 0;
+
+      // Find the busiest day
+      let maxVehicles = 0;
+      let busiestDay = 'N/A';
+      for (let i = 0; i < graphLabels.length; i++) {
+        if (vehiclesData[i] > maxVehicles) {
+          maxVehicles = vehiclesData[i];
+          busiestDay = graphLabels[i];
+        }
+      }
+      quickStats.busiestPeriod = busiestDay;
+      quickStats.busiestCount = maxVehicles;
     } else {
+      // Today: Hourly data from 00:00 to current hour
       dateCondition = `BETWEEN '${todayPKTDateStr} 00:00:00' AND '${todayPKTDateStr} 23:59:59'`;
+      const currentHour = today.getHours(); // e.g., 3 (03:22 AM)
+      for (let i = 0; i <= currentHour; i++) {
+        const label = `${String(i).padStart(2, '0')}:00-${String(i + 1).padStart(2, '0')}:00`;
+        graphLabels.push(label);
+      }
+      // Fetch hourly vehicle counts
+      for (let i = 0; i <= currentHour; i++) {
+        const hourCondition = `BETWEEN '${todayPKTDateStr} ${String(i).padStart(2, '0')}:00:00' AND '${todayPKTDateStr} ${String(i).padStart(2, '0')}:59:59'`;
+        const [nonExited] = await db.pool.query(
+          `SELECT COUNT(*) as count FROM entries WHERE entry_time ${hourCondition}`
+        );
+        const [exited] = await db.pool.query(
+          `SELECT COUNT(*) as count FROM exits WHERE exit_time ${hourCondition}`
+        );
+        const [hourlyEarnings] = await db.pool.query(
+          `SELECT COALESCE(SUM(cost), 0) as total FROM exits WHERE exit_time ${hourCondition}`
+        );
+        vehiclesData.push((nonExited[0].count || 0) + (exited[0].count || 0));
+        earningsData.push(Number(hourlyEarnings[0].total) || 0);
+      }
+      // Calculate earnings for the previous day (May 22)
+      const prevDate = new Date(today);
+      prevDate.setDate(today.getDate() - 1);
+      const prevDateStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
+      const prevCondition = `BETWEEN '${prevDateStr} 00:00:00' AND '${prevDateStr} 23:59:59'`;
+      const [prevEarnings] = await db.pool.query(
+        `SELECT COALESCE(SUM(cost), 0) as total FROM exits WHERE exit_time ${prevCondition}`
+      );
+      const currentEarnings = earningsData.reduce((sum, val) => sum + val, 0);
+      const prevEarningsValue = Number(prevEarnings[0].total) || 0;
+      earningsChange = prevEarningsValue > 0 ? ((currentEarnings - prevEarningsValue) / prevEarningsValue) * 100 : currentEarnings > 0 ? 100 : 0;
+
+      // Find the busiest hour
+      let maxVehicles = 0;
+      let busiestHour = 'N/A';
+      for (let i = 0; i < graphLabels.length; i++) {
+        if (vehiclesData[i] > maxVehicles) {
+          maxVehicles = vehiclesData[i];
+          busiestHour = graphLabels[i];
+        }
+      }
+      quickStats.busiestPeriod = busiestHour;
+      quickStats.busiestCount = maxVehicles;
     }
 
     // Debug: Fetch recent entries to verify entry_time
@@ -429,6 +580,27 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     // Fetch total spaces from parking lot
     const [lot] = await db.pool.query('SELECT total_spaces FROM parking_lot WHERE id = 1');
 
+    // Fetch recent activity (last 5 entries and exits combined)
+    const [recentEntriesActivity] = await db.pool.query(
+      `SELECT 'Entry' as action, number_plate as vehicle_number, entry_time as time, 'Entered' as details 
+       FROM entries 
+       ORDER BY entry_time DESC LIMIT 5`
+    );
+    const [recentExitsActivity] = await db.pool.query(
+      `SELECT 'Exit' as action, e.number_plate as vehicle_number, x.exit_time as time, CONCAT('Cost: PKR ', x.cost) as details 
+       FROM exits x 
+       JOIN entries e ON x.entry_id = e.id 
+       ORDER BY x.exit_time DESC LIMIT 5`
+    );
+    // Combine and sort by time (descending)
+    recentActivity = [...recentEntriesActivity, ...recentExitsActivity]
+      .sort((a, b) => new Date(b.time) - new Date(a.time))
+      .slice(0, 5);
+
+    // Calculate quick stats
+    const totalEarnings = Number(earnings[0].total) || 0;
+    quickStats.avgEarningsPerVehicle = totalVehicles > 0 ? (totalEarnings / totalVehicles).toFixed(2) : 0;
+
     const totalSpaces = lot.length > 0 ? Number(lot[0].total_spaces) || 0 : 0;
     const totalUsedSpaces = parkedVehicles.reduce((sum, vehicle) => {
       return sum + (Number(vehicle.spaces_per_vehicle) || 1);
@@ -444,19 +616,30 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
       parkedCount, 
       totalUsedSpaces, 
       totalSpaces, 
-      available 
+      available,
+      earningsChange,
+      recentActivity,
+      quickStats
     });
 
     const renderData = {
       vehicles: totalVehicles,
-      earnings: Number(earnings[0].total) || 0,
+      earnings: totalEarnings,
       available,
       parked: parkedCount,
       totalSpaces,
       filter,
       error: null,
       success: null,
-      user
+      user,
+      graphData: {
+        labels: graphLabels,
+        vehicles: vehiclesData,
+        earnings: earningsData
+      },
+      earningsChange: earningsChange.toFixed(1),
+      recentActivity,
+      quickStats
     };
     console.log('Rendering dashboard with:', renderData);
 
@@ -474,7 +657,11 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
       error: 'Server error: ' + err.message,
       success: null,
       user: req.session.admin,
-      hardRefresh: null
+      hardRefresh: null,
+      graphData: { labels: [], vehicles: [], earnings: [] },
+      earningsChange: 0,
+      recentActivity: [],
+      quickStats: { avgEarningsPerVehicle: 0, busiestPeriod: 'N/A', busiestCount: 0 }
     });
   }
 });

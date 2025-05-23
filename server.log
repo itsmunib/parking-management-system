@@ -2932,3 +2932,6 @@ app.listen(PORT, () => {
 });Dashboard error: Error: Unknown column 'exited' in 'field list'
 Dashboard error: Error: Unknown column 'exited' in 'field list'
 Dashboard error: Error: Unknown column 'exited' in 'field list'
+Dashboard error: Error: Unknown column 'number_plate' in 'field list'
+Dashboard error: Error: Unknown column 'number_plate' in 'field list'
+Dashboard error: Error: Unknown column 'number_plate' in 'field list'
