@@ -366,28 +366,28 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     let recentActivity = [];
     let quickStats = { avgEarningsPerVehicle: 0, busiestPeriod: 'N/A', busiestCount: 0 };
 
-    // Set today’s date in PKT (Node.js is already in PKT)
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
+    // Set current date and time in PKT (Node.js is already in PKT)
+    const currentTime = new Date(); // 06:56 AM PKT on May 23, 2025
+    const year = currentTime.getFullYear();
+    const month = String(currentTime.getMonth() + 1).padStart(2, '0');
+    const day = String(currentTime.getDate()).padStart(2, '0');
     const todayPKTDateStr = `${year}-${month}-${day}`; // e.g., "2025-05-23"
-    console.log('Today’s date (PKT):', todayPKTDateStr);
+    console.log('Current date and time (PKT):', currentTime);
 
     // Adjust date condition and prepare graph data
     if (filter === 'weekly') {
       dateCondition = `>= DATE_SUB('${todayPKTDateStr}', INTERVAL 7 DAY)`;
       // Generate labels for the past 7 days (e.g., "May 17", "May 18", ..., "May 23")
       for (let i = 6; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - i);
+        const date = new Date(currentTime);
+        date.setDate(currentTime.getDate() - i);
         const label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         graphLabels.push(label);
       }
       // Fetch daily vehicle counts (non-exited + exited)
       for (let i = 6; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - i);
+        const date = new Date(currentTime);
+        date.setDate(currentTime.getDate() - i);
         const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
         const dailyCondition = `BETWEEN '${dateStr} 00:00:00' AND '${dateStr} 23:59:59'`;
         const [nonExited] = await db.pool.query(
@@ -403,10 +403,10 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
         earningsData.push(Number(dailyEarnings[0].total) || 0);
       }
       // Calculate earnings for the previous 7-day period (May 10–16)
-      const prevStartDate = new Date(today);
-      prevStartDate.setDate(today.getDate() - 13);
-      const prevEndDate = new Date(today);
-      prevEndDate.setDate(today.getDate() - 7);
+      const prevStartDate = new Date(currentTime);
+      prevStartDate.setDate(currentTime.getDate() - 13);
+      const prevEndDate = new Date(currentTime);
+      prevEndDate.setDate(currentTime.getDate() - 7);
       const prevStartStr = `${prevStartDate.getFullYear()}-${String(prevStartDate.getMonth() + 1).padStart(2, '0')}-${String(prevStartDate.getDate()).padStart(2, '0')}`;
       const prevEndStr = `${prevEndDate.getFullYear()}-${String(prevEndDate.getMonth() + 1).padStart(2, '0')}-${String(prevEndDate.getDate()).padStart(2, '0')}`;
       const prevCondition = `BETWEEN '${prevStartStr} 00:00:00' AND '${prevEndStr} 23:59:59'`;
@@ -432,15 +432,15 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
       dateCondition = `>= DATE_SUB('${todayPKTDateStr}', INTERVAL 30 DAY)`;
       // Generate labels for the past 30 days (e.g., "Apr 24", "Apr 25", ..., "May 23")
       for (let i = 29; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - i);
+        const date = new Date(currentTime);
+        date.setDate(currentTime.getDate() - i);
         const label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         graphLabels.push(label);
       }
       // Fetch daily vehicle counts
       for (let i = 29; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - i);
+        const date = new Date(currentTime);
+        date.setDate(currentTime.getDate() - i);
         const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
         const dailyCondition = `BETWEEN '${dateStr} 00:00:00' AND '${dateStr} 23:59:59'`;
         const [nonExited] = await db.pool.query(
@@ -456,10 +456,10 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
         earningsData.push(Number(dailyEarnings[0].total) || 0);
       }
       // Calculate earnings for the previous 30-day period (Mar 25–Apr 23)
-      const prevStartDate = new Date(today);
-      prevStartDate.setDate(today.getDate() - 59);
-      const prevEndDate = new Date(today);
-      prevEndDate.setDate(today.getDate() - 30);
+      const prevStartDate = new Date(currentTime);
+      prevStartDate.setDate(currentTime.getDate() - 59);
+      const prevEndDate = new Date(currentTime);
+      prevEndDate.setDate(currentTime.getDate() - 30);
       const prevStartStr = `${prevStartDate.getFullYear()}-${String(prevStartDate.getMonth() + 1).padStart(2, '0')}-${String(prevStartDate.getDate()).padStart(2, '0')}`;
       const prevEndStr = `${prevEndDate.getFullYear()}-${String(prevEndDate.getMonth() + 1).padStart(2, '0')}-${String(prevEndDate.getDate()).padStart(2, '0')}`;
       const prevCondition = `BETWEEN '${prevStartStr} 00:00:00' AND '${prevEndStr} 23:59:59'`;
@@ -482,16 +482,34 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
       quickStats.busiestPeriod = busiestDay;
       quickStats.busiestCount = maxVehicles;
     } else {
-      // Today: Hourly data from 00:00 to current hour
-      dateCondition = `BETWEEN '${todayPKTDateStr} 00:00:00' AND '${todayPKTDateStr} 23:59:59'`;
-      const currentHour = today.getHours(); // e.g., 3 (03:22 AM)
-      for (let i = 0; i <= currentHour; i++) {
-        const label = `${String(i).padStart(2, '0')}:00-${String(i + 1).padStart(2, '0')}:00`;
+      // Past 24 hours: From 06:56 AM on May 22 to 06:56 AM on May 23
+      const startTime = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000); // 24 hours ago
+      const endTime = new Date(currentTime); // Current time
+
+      // Format the date condition for the past 24 hours
+      const startStr = `${startTime.getFullYear()}-${String(startTime.getMonth() + 1).padStart(2, '0')}-${String(startTime.getDate()).padStart(2, '0')} ${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}:${String(startTime.getSeconds()).padStart(2, '0')}`;
+      const endStr = `${endTime.getFullYear()}-${String(endTime.getMonth() + 1).padStart(2, '0')}-${String(endTime.getDate()).padStart(2, '0')} ${String(endTime.getHours()).padStart(2, '0')}:${String(endTime.getMinutes()).padStart(2, '0')}:${String(endTime.getSeconds()).padStart(2, '0')}`;
+      dateCondition = `BETWEEN '${startStr}' AND '${endStr}'`;
+
+      // Generate labels for the past 24 hours
+      for (let i = 23; i >= 0; i--) {
+        const hour = new Date(currentTime.getTime() - i * 60 * 60 * 1000);
+        const label = hour.toLocaleString('en-US', { 
+          month: 'short', 
+          day: 'numeric', 
+          hour: '2-digit', 
+          hour12: false 
+        }).replace(',', '');
         graphLabels.push(label);
       }
-      // Fetch hourly vehicle counts
-      for (let i = 0; i <= currentHour; i++) {
-        const hourCondition = `BETWEEN '${todayPKTDateStr} ${String(i).padStart(2, '0')}:00:00' AND '${todayPKTDateStr} ${String(i).padStart(2, '0')}:59:59'`;
+
+      // Fetch hourly vehicle counts for the past 24 hours
+      for (let i = 23; i >= 0; i--) {
+        const hourStart = new Date(currentTime.getTime() - i * 60 * 60 * 1000);
+        const hourEnd = new Date(hourStart.getTime() + 60 * 60 * 1000 - 1000); // End of the hour
+        const hourStartStr = `${hourStart.getFullYear()}-${String(hourStart.getMonth() + 1).padStart(2, '0')}-${String(hourStart.getDate()).padStart(2, '0')} ${String(hourStart.getHours()).padStart(2, '0')}:${String(hourStart.getMinutes()).padStart(2, '0')}:${String(hourStart.getSeconds()).padStart(2, '0')}`;
+        const hourEndStr = `${hourEnd.getFullYear()}-${String(hourEnd.getMonth() + 1).padStart(2, '0')}-${String(hourEnd.getDate()).padStart(2, '0')} ${String(hourEnd.getHours()).padStart(2, '0')}:${String(hourEnd.getMinutes()).padStart(2, '0')}:${String(hourEnd.getSeconds()).padStart(2, '0')}`;
+        const hourCondition = `BETWEEN '${hourStartStr}' AND '${hourEndStr}'`;
         const [nonExited] = await db.pool.query(
           `SELECT COUNT(*) as count FROM entries WHERE entry_time ${hourCondition}`
         );
@@ -504,11 +522,13 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
         vehiclesData.push((nonExited[0].count || 0) + (exited[0].count || 0));
         earningsData.push(Number(hourlyEarnings[0].total) || 0);
       }
-      // Calculate earnings for the previous day (May 22)
-      const prevDate = new Date(today);
-      prevDate.setDate(today.getDate() - 1);
-      const prevDateStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDate.getDate()).padStart(2, '0')}`;
-      const prevCondition = `BETWEEN '${prevDateStr} 00:00:00' AND '${prevDateStr} 23:59:59'`;
+
+      // Calculate earnings for the previous 24-hour period (May 21 06:56 to May 22 06:56)
+      const prevStartTime = new Date(currentTime.getTime() - 48 * 60 * 60 * 1000); // 48 hours ago
+      const prevEndTime = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000); // 24 hours ago
+      const prevStartStr = `${prevStartTime.getFullYear()}-${String(prevStartTime.getMonth() + 1).padStart(2, '0')}-${String(prevStartTime.getDate()).padStart(2, '0')} ${String(prevStartTime.getHours()).padStart(2, '0')}:${String(prevStartTime.getMinutes()).padStart(2, '0')}:${String(prevStartTime.getSeconds()).padStart(2, '0')}`;
+      const prevEndStr = `${prevEndTime.getFullYear()}-${String(prevEndTime.getMonth() + 1).padStart(2, '0')}-${String(prevEndTime.getDate()).padStart(2, '0')} ${String(prevEndTime.getHours()).padStart(2, '0')}:${String(prevEndTime.getMinutes()).padStart(2, '0')}:${String(prevEndTime.getSeconds()).padStart(2, '0')}`;
+      const prevCondition = `BETWEEN '${prevStartStr}' AND '${prevEndStr}'`;
       const [prevEarnings] = await db.pool.query(
         `SELECT COALESCE(SUM(cost), 0) as total FROM exits WHERE exit_time ${prevCondition}`
       );
@@ -537,7 +557,7 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
 
     // Debug: Fetch recent exits
     const [recentExits] = await db.pool.query(
-      `SELECT entry_id, exit_time FROM exits ORDER BY exit_time DESC LIMIT 5`
+      `SELECT number_plate, exit_time, cost FROM exits ORDER BY exit_time DESC LIMIT 5`
     );
     console.log('Recent exits:', recentExits);
 
@@ -561,7 +581,7 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     console.log('Non-exited entries matching filter:', matchingEntries);
 
     const [matchingExits] = await db.pool.query(
-      `SELECT entry_id, exit_time FROM exits WHERE exit_time ${dateCondition}`
+      `SELECT number_plate, exit_time FROM exits WHERE exit_time ${dateCondition}`
     );
     console.log('Exited entries matching filter:', matchingExits);
 
@@ -574,28 +594,28 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
     const [parkedVehicles] = await db.pool.query(
       `SELECT e.category_id, vc.spaces_per_vehicle 
        FROM entries e 
-       JOIN vehicle_categories vc ON e.category_id = vc.id`
+       JOIN vehicle_categories vc ON e.category_id = vc.id
+       WHERE e.status = 'Active'`
     );
 
     // Fetch total spaces from parking lot
     const [lot] = await db.pool.query('SELECT total_spaces FROM parking_lot WHERE id = 1');
 
-    // Fetch recent activity (last 5 entries and exits combined)
+    // Fetch recent activity (last 3 entries and exits combined)
     const [recentEntriesActivity] = await db.pool.query(
       `SELECT 'Entry' as action, number_plate as vehicle_number, entry_time as time, 'Entered' as details 
        FROM entries 
        ORDER BY entry_time DESC LIMIT 5`
     );
     const [recentExitsActivity] = await db.pool.query(
-      `SELECT 'Exit' as action, e.number_plate as vehicle_number, x.exit_time as time, CONCAT('Cost: PKR ', x.cost) as details 
-       FROM exits x 
-       JOIN entries e ON x.entry_id = e.id 
-       ORDER BY x.exit_time DESC LIMIT 5`
+      `SELECT 'Exit' as action, number_plate as vehicle_number, exit_time as time, CONCAT('Cost: PKR ', cost) as details 
+       FROM exits 
+       ORDER BY exit_time DESC LIMIT 5`
     );
-    // Combine and sort by time (descending)
+    // Combine and sort by time (descending), limit to 3
     recentActivity = [...recentEntriesActivity, ...recentExitsActivity]
       .sort((a, b) => new Date(b.time) - new Date(a.time))
-      .slice(0, 5);
+      .slice(0, 3);
 
     // Calculate quick stats
     const totalEarnings = Number(earnings[0].total) || 0;
@@ -1480,159 +1500,89 @@ app.post('/entry', isAuthenticated, hasPermission('entry'), async (req, res) => 
 app.get('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
   console.log('GET /exit');
   try {
-    const user = req.session.admin;
-    const [entries] = await db.pool.query(
-      'SELECT e.id, e.number_plate, e.entry_time, e.owner_name, e.phone, e.category_id, vc.name as category, vc.pricing_type, vc.price, vc.spaces_per_vehicle ' +
-      'FROM entries e LEFT JOIN vehicle_categories vc ON e.category_id = vc.id'
-    );
-    console.log('Exit entries:', entries);
-    res.render('exit', { entries: entries || [], error: null, success: null, user });
+    const [entries] = await db.pool.query(`
+      SELECT e.id, e.number_plate, e.entry_time, e.owner_name, e.phone, vc.name as category 
+      FROM entries e 
+      JOIN vehicle_categories vc ON e.category_id = vc.id
+      WHERE e.status = 'Active'
+    `);
+    res.render('exit', { entries, error: null, success: null, user: req.session.admin });
   } catch (err) {
     console.error('Exit error:', err);
     fs.writeFileSync('server.log', `Exit error: ${err}\n`, { flag: 'a' });
-    res.render('exit', { entries: [], error: 'Server error', success: null, user: req.session.admin });
+    res.render('exit', { entries: [], error: 'Server error: ' + err.message, success: null, user: req.session.admin });
   }
 });
 
 app.post('/exit', isAuthenticated, hasPermission('exit'), async (req, res) => {
-  const user = req.session.admin;
+  console.log('POST /exit');
   const { entry_id } = req.body;
-  console.log('POST /exit:', { entry_id });
 
   try {
-    const [parkedBefore] = await db.pool.query(
-      `SELECT COUNT(*) as count FROM entries`
-    );
-    const [earningsBefore] = await db.pool.query(
-      `SELECT COALESCE(SUM(x.cost), 0) as total FROM exits x WHERE DATE(x.exit_time) = CURDATE()`
-    );
-    console.log('Dashboard stats before exit:', { parked: parkedBefore[0].count, earnings: earningsBefore[0].total });
-
-    const [entry] = await db.pool.query(
-      'SELECT e.entry_time, e.number_plate, e.category_id, vc.pricing_type, vc.price, vc.spaces_per_vehicle, vc.name as category ' +
-      'FROM entries e JOIN vehicle_categories vc ON e.category_id = vc.id ' +
-      'WHERE e.id = ?',
-      [entry_id]
-    );
-    console.log('Exit entry:', entry);
+    // Fetch the entry to get the number_plate, entry_time, and category_id
+    const [entry] = await db.pool.query('SELECT number_plate, entry_time, category_id FROM entries WHERE id = ?', [entry_id]);
     if (entry.length === 0) {
-      console.log('Entry not found for exit:', { entry_id });
-      return res.status(404).send('Entry not found');
-    }
-
-    const entryTime = new Date(entry[0].entry_time).toLocaleString();
-    const exitTime = new Date();
-    const exitTimeFormatted = exitTime.toLocaleString();
-    let cost = 0;
-    if (entry[0].pricing_type === 'hourly') {
-      const hours = Math.ceil((exitTime - new Date(entry[0].entry_time)) / (1000 * 60 * 60));
-      cost = hours * (parseFloat(entry[0].price) || 0);
-    } else {
-      cost = parseFloat(entry[0].price) || 0;
-    }
-    console.log('Calculated cost:', cost);
-
-    const connection = await db.pool.getConnection();
-    let transactionSuccess = false;
-    try {
-      await connection.beginTransaction();
-
-      const [result] = await connection.query(
-        'INSERT INTO exits (entry_id, exit_time, cost) VALUES (?, NOW(), ?)',
-        [entry_id, cost]
-      );
-      console.log('Exit record inserted:', { entry_id, cost, insertId: result.insertId });
-
-      // Delete the entry instead of marking it as exited
-      const [deleteEntryResult] = await connection.query(
-        'DELETE FROM entries WHERE id = ?',
-        [entry_id]
-      );
-      console.log('Entry deleted:', { entry_id, affectedRows: deleteEntryResult.affectedRows });
-
-      const spacesPerVehicle = Number(entry[0].spaces_per_vehicle) || 1;
-      const [updateResult] = await connection.query(
-        'UPDATE parking_lot SET used_spaces = GREATEST(used_spaces - ?, 0) WHERE id = 1',
-        [spacesPerVehicle]
-      );
-      console.log('Updated parking_lot used_spaces:', { affectedRows: updateResult.affectedRows, spacesPerVehicle });
-
-      await connection.commit();
-      transactionSuccess = true;
-      console.log('Transaction committed successfully for entry_id:', entry_id);
-    } catch (transactionErr) {
-      console.error('Transaction error for entry_id:', { entry_id, error: transactionErr.message, stack: transactionErr.stack });
-      await connection.rollback();
-      console.log('Transaction rolled back for entry_id:', entry_id);
-      throw transactionErr;
-    } finally {
-      connection.release();
-      console.log('Database connection released for entry_id:', entry_id);
-    }
-
-    if (!transactionSuccess) {
-      throw new Error('Transaction failed to complete for entry_id: ' + entry_id);
-    }
-
-    const [newExit] = await db.pool.query('SELECT * FROM exits WHERE entry_id = ?', [entry_id]);
-    console.log('New exit record:', newExit);
-
-    const [parkedAfter] = await db.pool.query(
-      `SELECT COUNT(*) as count FROM entries`
-    );
-    const [earningsAfter] = await db.pool.query(
-      `SELECT COALESCE(SUM(x.cost), 0) as total FROM exits x WHERE DATE(x.exit_time) = CURDATE()`
-    );
-    console.log('Dashboard stats after exit:', { parked: parkedAfter[0].count, earnings: earningsAfter[0].total });
-
-    if (req.session.subscription) {
-      const payload = JSON.stringify({
-        title: 'Vehicle Exited',
-        body: `Your vehicle ${entry[0].number_plate} has exited. Total cost: PKR ${cost.toFixed(2)}.`
+      return res.render('exit', { 
+        entries: [], 
+        error: 'Entry not found', 
+        success: null, 
+        user: req.session.admin 
       });
-      await webPush.sendNotification(req.session.subscription, payload);
     }
 
-    // Generate the receipt content
-    const receiptContent = `
-      <div style="text-align: center; font-family: Arial, sans-serif; padding: 20px;">
-        <h2>Parking System</h2>
-        <h4>Exit Receipt</h4>
-        <p><strong>Vehicle Number:</strong> ${entry[0].number_plate}</p>
-        <p><strong>Category:</strong> ${entry[0].category}</p>
-        <p><strong>Entry Time:</strong> ${entryTime}</p>
-        <p><strong>Exit Time:</strong> ${exitTimeFormatted}</p>
-        <p><strong>Total Cost:</strong> ${cost.toFixed(2)} PKR</p>
-        <p><strong>Processed By:</strong> ${user.username}</p>
-      </div>
-    `;
+    const { number_plate, entry_time, category_id } = entry[0];
+    const exit_time = new Date();
 
-    // Serve as HTML, let client-side script handle PDF generation
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Exit Receipt</title>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-      </head>
-      <body>
-        <div id="receipt">${receiptContent}</div>
-        <script>
-          const element = document.getElementById('receipt');
-          html2pdf().from(element).save('exit_receipt_${entry[0].number_plate}_${Date.now()}.pdf');
-          setTimeout(() => { window.location.href = '/dashboard?hardrefresh=${Date.now()}'; }, 1000);
-        </script>
-      </body>
-      </html>
+    // Fetch the pricing details for the category
+    const [category] = await db.pool.query('SELECT pricing_type, price FROM vehicle_categories WHERE id = ?', [category_id]);
+    if (category.length === 0) {
+      return res.render('exit', { 
+        entries: [], 
+        error: 'Category not found', 
+        success: null, 
+        user: req.session.admin 
+      });
+    }
+
+    const { pricing_type, price } = category[0];
+    let cost = 0;
+
+    if (pricing_type === 'hourly') {
+      const hours = Math.ceil((exit_time - new Date(entry_time)) / (1000 * 60 * 60));
+      cost = hours * price;
+    } else {
+      cost = price;
+    }
+
+    // Insert into exits table with number_plate
+    await db.pool.query('INSERT INTO exits (entry_id, number_plate, exit_time, cost) VALUES (?, ?, ?, ?)', [entry_id, number_plate, exit_time, cost]);
+
+    // Update the entry status to 'Exited' instead of deleting it
+    await db.pool.query('UPDATE entries SET status = "Exited" WHERE id = ?', [entry_id]);
+
+    // Fetch remaining active entries (status = 'Active')
+    const [entries] = await db.pool.query(`
+      SELECT e.id, e.number_plate, e.entry_time, e.owner_name, e.phone, vc.name as category 
+      FROM entries e 
+      JOIN vehicle_categories vc ON e.category_id = vc.id
+      WHERE e.status = 'Active'
     `);
+
+    res.render('exit', { 
+      entries, 
+      error: null, 
+      success: 'Vehicle exit processed successfully', 
+      user: req.session.admin 
+    });
   } catch (err) {
-    console.error('Process exit error:', err.message, err.stack);
-    fs.writeFileSync('server.log', `Process exit error: ${err.message}\n${err.stack}\n`, { flag: 'a' });
-    const [entries] = await db.pool.query(
-      'SELECT e.id, e.number_plate, e.entry_time, e.owner_name, e.phone, e.category_id, vc.name as category, vc.pricing_type, vc.price, vc.spaces_per_vehicle ' +
-      'FROM entries e LEFT JOIN vehicle_categories vc ON e.category_id = vc.id'
-    );
-    res.render('exit', { entries: entries || [], error: 'Failed to process exit: ' + err.message, success: null, user });
+    console.error('Exit error:', err);
+    fs.writeFileSync('server.log', `Exit error: ${err}\n`, { flag: 'a' });
+    res.render('exit', { 
+      entries: [], 
+      error: 'Server error: ' + err.message, 
+      success: null, 
+      user: req.session.admin 
+    });
   }
 });
 

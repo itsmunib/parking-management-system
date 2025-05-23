@@ -444,7 +444,7 @@
   <!-- Top Navigation Bar -->
   <div class="top-nav">
     <i class="fas fa-bars sidebar-toggle"></i>
-    <a class="brand navbar-brand" href="/dashboard" style="color: white;">Badi Parking System</a>
+    <div class="brand">Badi Parking System</div>
     <div class="user-info">
       <span><i class="fas fa-user mr-2"></i><%= user.username %></span>
       <a href="/logout"><i class="fas fa-sign-out-alt mr-2"></i>Logout</a>
@@ -454,6 +454,9 @@
   <!-- Sidebar -->
   <nav class="sidebar" id="sidebar">
     <ul class="nav flex-column">
+      <li class="nav-item">
+        <a class="nav-link active" href="/dashboard"><i class="fas fa-tachometer-alt"></i><span>Dashboard</span></a>
+      </li>
       <% if (user) { %>
         <% if (user.permissions.entry || user.username === 'superadmin') { %>
           <li class="nav-item">
@@ -756,15 +759,15 @@
             zoom: {
               zoom: {
                 wheel: {
-                  enabled: <%= filter === 'monthly' ? 'true' : 'false' %>
+                  enabled: true // Enable zoom for all filters
                 },
                 pinch: {
-                  enabled: <%= filter === 'monthly' ? 'true' : 'false' %>
+                  enabled: true // Enable pinch zoom for all filters
                 },
                 mode: 'x'
               },
               pan: {
-                enabled: <%= filter === 'monthly' ? 'true' : 'false' %>,
+                enabled: true, // Enable pan for all filters
                 mode: 'x'
               }
             }
